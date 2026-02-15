@@ -242,6 +242,7 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
             module.clone(),
             config.clone(),
             registry,
+            Default::default(),
         )
         .unwrap();
 

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::future::Future;
 
 use anyhow::Result;

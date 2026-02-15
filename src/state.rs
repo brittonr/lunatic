@@ -8,6 +8,7 @@ use lunatic_distributed::{DistributedCtx, DistributedProcessState};
 use lunatic_error_api::{ErrorCtx, ErrorResource};
 use lunatic_networking_api::{DnsIterator, TlsConnection, TlsListener};
 use lunatic_networking_api::{NetworkingCtx, TcpConnection};
+use lunatic_plugin::{PluginCtx, PluginRegistry};
 use lunatic_process::env::{Environment, LunaticEnvironment};
 use lunatic_process::runtimes::wasmtime::{WasmtimeCompiledModule, WasmtimeRuntime};
 use lunatic_process::state::{ConfigResources, ProcessState};
@@ -71,6 +72,8 @@ pub struct DefaultProcessState {
     // database resources
     db_resources: DbResources,
     registry: Arc<RwLock<HashMap<String, (u64, u64)>>>,
+    // Plugin registry shared across all processes
+    plugin_registry: Arc<PluginRegistry>,
 }
 
 impl DefaultProcessState {
@@ -81,6 +84,7 @@ impl DefaultProcessState {
         module: Arc<WasmtimeCompiledModule<Self>>,
         config: Arc<DefaultProcessConfig>,
         registry: Arc<RwLock<HashMap<String, (u64, u64)>>>,
+        plugin_registry: Arc<PluginRegistry>,
     ) -> Result<Self> {
         let signal_mailbox = unbounded_channel();
         let signal_mailbox = (signal_mailbox.0, Arc::new(Mutex::new(signal_mailbox.1)));
@@ -106,6 +110,7 @@ impl DefaultProcessState {
             initialized: false,
             registry,
             db_resources: DbResources::default(),
+            plugin_registry,
         };
         Ok(state)
     }
@@ -143,6 +148,7 @@ impl ProcessState for DefaultProcessState {
             initialized: false,
             registry: self.registry.clone(),
             db_resources: DbResources::default(),
+            plugin_registry: self.plugin_registry.clone(),
         };
         Ok(state)
     }
@@ -481,8 +487,15 @@ impl DistributedCtx<LunaticEnvironment> for DefaultProcessState {
             initialized: false,
             registry: Default::default(), // TODO move registry into env?
             db_resources: DbResources::default(),
+            plugin_registry: Default::default(),
         };
         Ok(state)
+    }
+}
+
+impl PluginCtx for DefaultProcessState {
+    fn plugin_registry(&self) -> &Arc<PluginRegistry> {
+        &self.plugin_registry
     }
 }
 
@@ -519,6 +532,7 @@ mod tests {
             module.clone(),
             Arc::new(config),
             registry,
+            Default::default(),
         )
         .unwrap();
 

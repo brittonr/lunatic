@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Result};
@@ -92,7 +94,12 @@ where
             nodes_ptr as usize..(nodes_ptr as usize + std::mem::size_of::<u64>() * copy_nodes_len),
         )
         .or_trap("lunatic::distributed::get_nodes::memory")?
-        .copy_from_slice(unsafe { node_ids[..copy_nodes_len].align_to::<u8>().1 });
+        .copy_from_slice(
+            &node_ids[..copy_nodes_len]
+                .iter()
+                .flat_map(|id| id.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
     Ok(copy_nodes_len as u32)
 }
 
@@ -178,7 +185,12 @@ where
                     ..(nodes_ptr as usize + std::mem::size_of::<u64>() * copy_nodes_len),
             )
             .or_trap("lunatic::distributed::copy_lookup_nodes_results::memory")?
-            .copy_from_slice(unsafe { nodes[..copy_nodes_len].align_to::<u8>().1 });
+            .copy_from_slice(
+                &nodes[..copy_nodes_len]
+                    .iter()
+                    .flat_map(|id| id.to_le_bytes())
+                    .collect::<Vec<u8>>(),
+            );
         Ok(copy_nodes_len as i32)
     } else {
         let error = anyhow!("Invalid query id");

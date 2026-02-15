@@ -1,0 +1,15 @@
+[package]
+name = "lunatic-plugin"
+version = "0.13.2"
+edition = "2024"
+rust-version = "1.85"
+description = "Plugin system for the lunatic runtime"
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
+wasmtime = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+semver = "1.0"
+wasmparser = "0.243"
+wasm-encoder = "0.243"

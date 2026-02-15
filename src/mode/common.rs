@@ -72,6 +72,7 @@ pub async fn run_wasm(args: RunWasm) -> Result<()> {
         module.clone(),
         Arc::new(config),
         Default::default(),
+        Default::default(),
     )
     .unwrap();
 

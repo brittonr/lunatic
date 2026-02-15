@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use anyhow::Result;
 use hash_map_id::HashMapId;
 use lunatic_common_api::{get_memory, IntoTrap};

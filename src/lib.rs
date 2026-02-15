@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 /*!
 The [lunatic vm](https://lunatic.solutions/) is a system for creating actors from WebAssembly
 modules. This `lunatic-runtime` library allows you to embed the `lunatic vm` inside your Rust

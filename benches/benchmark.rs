@@ -34,6 +34,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 module.clone(),
                 config.clone(),
                 registry,
+                Default::default(),
             )
             .unwrap();
             lunatic_process::wasm::spawn_wasm(
