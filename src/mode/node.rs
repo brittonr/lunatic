@@ -43,6 +43,10 @@ pub(crate) struct Args {
     #[arg(long, value_parser = parse_key_val, action = clap::ArgAction::Append)]
     tag: Vec<(String, String)>,
 
+    /// Chunk size in bytes for distributed message congestion control
+    #[arg(long, default_value = "1024")]
+    chunk_size: usize,
+
     #[cfg(feature = "prometheus")]
     #[command(flatten)]
     prometheus: super::common::PrometheusArgs,
@@ -106,8 +110,14 @@ pub(crate) async fn start(args: Args) -> Result<()> {
     )
     .with_context(|| "Failed to create mTLS QUIC client")?;
 
-    let distributed_client =
-        distributed::Client::new(node_id, control_client.clone(), quic_client.clone());
+    let distributed_client = distributed::Client::new(
+        node_id,
+        control_client.clone(),
+        quic_client.clone(),
+        distributed::client::DistributedConfig {
+            chunk_size: args.chunk_size,
+        },
+    );
 
     let dist = lunatic_distributed::DistributedProcessState::new(
         node_id,

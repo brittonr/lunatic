@@ -15,7 +15,7 @@ use lunatic_distributed::{
 use lunatic_error_api::ErrorCtx;
 use lunatic_process::{
     env::Environment,
-    message::{DataMessage, Message},
+    message::Message,
 };
 use lunatic_process_api::ProcessCtx;
 use rcgen::{CertificateParams, CertificateSigningRequestParams, KeyPair};
@@ -500,16 +500,11 @@ where
             .take()
             .or_trap("lunatic::distributed::send::no_message")?;
 
-        if let Message::Data(DataMessage {
-            tag,
-            buffer,
-            resources,
-            ..
-        }) = message
-        {
-            if !resources.is_empty() {
+        if let Message::Data(data_msg) = message {
+            if !data_msg.resources_is_empty() {
                 return Err(anyhow!("Cannot send resources to remote nodes."));
             }
+            let (tag, buffer) = data_msg.into_parts();
 
             let state = caller.data();
             let send_params = SendParams {
@@ -567,16 +562,11 @@ where
             .take()
             .or_trap("lunatic::distributed::send_receive_skip_search")?;
 
-        if let Message::Data(DataMessage {
-            tag,
-            buffer,
-            resources,
-            ..
-        }) = message
-        {
-            if !resources.is_empty() {
+        if let Message::Data(data_msg) = message {
+            if !data_msg.resources_is_empty() {
                 return Err(anyhow!("Cannot send resources to remote nodes."));
             }
+            let (tag, buffer) = data_msg.into_parts();
 
             let state = caller.data();
             let send_params = SendParams {

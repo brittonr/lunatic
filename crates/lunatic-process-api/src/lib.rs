@@ -90,7 +90,7 @@ where
         "Duration of module compilation"
     );
 
-    linker.func_wrap("lunatic::process", "compile_module", compile_module)?;
+    linker.func_wrap_async("lunatic::process", "compile_module", compile_module)?;
     linker.func_wrap("lunatic::process", "drop_module", drop_module)?;
 
     #[cfg(feature = "metrics")]
@@ -186,7 +186,7 @@ where
 // Compile a new WebAssembly module.
 //
 // The `spawn` function can be used to spawn new processes from the module.
-// Module compilation can be a CPU intensive task.
+// Module compilation can be a CPU intensive task and is offloaded to the blocking thread pool.
 //
 // Returns:
 // *  0 on success - The ID of the newly created module is written to **id_ptr**
@@ -194,55 +194,62 @@ where
 // * -1 in case the process doesn't have permission to compile modules.
 fn compile_module<T>(
     mut caller: Caller<T>,
-    module_data_ptr: u32,
-    module_data_len: u32,
-    id_ptr: u32,
-) -> Result<i32>
+    (module_data_ptr, module_data_len, id_ptr): (u32, u32, u32),
+) -> Box<dyn Future<Output = Result<i32>> + Send + '_>
 where
-    T: ProcessState + ProcessCtx<T> + ErrorCtx,
+    T: ProcessState + ProcessCtx<T> + ErrorCtx + Send + 'static,
     T::Config: ProcessConfigCtx,
 {
-    // TODO: Module compilation is CPU intensive and should be done on the blocking task thread pool.
-    if !caller.data().config().can_compile_modules() {
-        return Ok(-1);
-    }
+    Box::new(async move {
+        if !caller.data().config().can_compile_modules() {
+            return Ok(-1);
+        }
 
-    #[cfg(feature = "metrics")]
-    metrics::counter!("lunatic.process.modules.compiled").increment(1);
+        #[cfg(feature = "metrics")]
+        metrics::counter!("lunatic.process.modules.compiled").increment(1);
 
-    #[cfg(feature = "metrics")]
-    metrics::gauge!("lunatic.process.modules.active").increment(1.0);
+        #[cfg(feature = "metrics")]
+        metrics::gauge!("lunatic.process.modules.active").increment(1.0);
 
-    #[cfg(feature = "metrics")]
-    let start = Instant::now();
+        #[cfg(feature = "metrics")]
+        let start = Instant::now();
 
-    let mut module = vec![0; module_data_len as usize];
-    let memory = get_memory(&mut caller)?;
-    memory
-        .read(&caller, module_data_ptr as usize, module.as_mut_slice())
-        .or_trap("lunatic::process::compile_module")?;
+        let mut raw_bytes = vec![0; module_data_len as usize];
+        let memory = get_memory(&mut caller)?;
+        memory
+            .read(&caller, module_data_ptr as usize, raw_bytes.as_mut_slice())
+            .or_trap("lunatic::process::compile_module")?;
 
-    let module = RawWasm::new(None, module);
-    let (mod_or_error_id, result) = match caller.data().runtime().compile_module(module) {
-        Ok(module) => (
-            caller
-                .data_mut()
-                .module_resources_mut()
-                .add(Arc::new(module)),
-            0,
-        ),
-        Err(error) => (caller.data_mut().error_resources_mut().add(error), 1),
-    };
+        let raw_wasm = RawWasm::new(None, raw_bytes);
+        let runtime = caller.data().runtime().clone();
 
-    #[cfg(feature = "metrics")]
-    let duration = Instant::now() - start;
-    #[cfg(feature = "metrics")]
-    metrics::histogram!("lunatic.process.modules.compiled.duration").record(duration);
+        let compile_result =
+            tokio::task::spawn_blocking(move || runtime.compile_module::<T>(raw_wasm))
+                .await
+                .map_err(|e| anyhow!("Module compilation task panicked: {e}"))?;
 
-    memory
-        .write(&mut caller, id_ptr as usize, &mod_or_error_id.to_le_bytes())
-        .or_trap("lunatic::process::compile_module")?;
-    Ok(result)
+        let memory = get_memory(&mut caller)?;
+        let (mod_or_error_id, result) = match compile_result {
+            Ok(module) => (
+                caller
+                    .data_mut()
+                    .module_resources_mut()
+                    .add(Arc::new(module)),
+                0,
+            ),
+            Err(error) => (caller.data_mut().error_resources_mut().add(error), 1),
+        };
+
+        #[cfg(feature = "metrics")]
+        let duration = Instant::now() - start;
+        #[cfg(feature = "metrics")]
+        metrics::histogram!("lunatic.process.modules.compiled.duration").record(duration);
+
+        memory
+            .write(&mut caller, id_ptr as usize, &mod_or_error_id.to_le_bytes())
+            .or_trap("lunatic::process::compile_module")?;
+        Ok(result)
+    })
 }
 
 // Drops the module from resources.

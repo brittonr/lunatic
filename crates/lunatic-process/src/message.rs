@@ -35,7 +35,7 @@ pub enum Message {
 impl Message {
     pub fn tag(&self) -> Option<i64> {
         match self {
-            Message::Data(message) => message.tag,
+            Message::Data(message) => message.tag(),
             Message::LinkDied(tag) => *tag,
             Message::ProcessDied(_) => None,
         }
@@ -66,14 +66,30 @@ impl Message {
 /// It implements the [`Read`](std::io::Read) and [`Write`](std::io::Write) traits.
 #[derive(Debug, Default)]
 pub struct DataMessage {
-    // TODO: Only the Node implementation depends on these fields being public.
-    pub tag: Option<i64>,
-    pub read_ptr: usize,
-    pub buffer: Vec<u8>,
-    pub resources: Vec<Option<Arc<Resource>>>,
+    tag: Option<i64>,
+    read_ptr: usize,
+    buffer: Vec<u8>,
+    resources: Vec<Option<Arc<Resource>>>,
 }
 
 impl DataMessage {
+    pub fn tag(&self) -> Option<i64> {
+        self.tag
+    }
+
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    pub fn resources_is_empty(&self) -> bool {
+        self.resources.is_empty()
+    }
+
+    /// Consumes the message and returns its tag and buffer.
+    pub fn into_parts(self) -> (Option<i64>, Vec<u8>) {
+        (self.tag, self.buffer)
+    }
+
     /// Create a new message.
     pub fn new(tag: Option<i64>, buffer_capacity: usize) -> Self {
         Self {

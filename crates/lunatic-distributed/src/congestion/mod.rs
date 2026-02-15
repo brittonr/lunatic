@@ -65,10 +65,8 @@ pub struct MessageChunk {
     data: bytes::Bytes,
 }
 
-// TODO: move to configuration
-const CHUNK_SIZE: usize = 1024;
-
 pub async fn congestion_control_worker(state: distributed::Client) -> ! {
+    let chunk_size = state.inner.config.chunk_size;
     state.inner.has_messages.notified().await;
     log::trace!("starting congestion control worker");
     loop {
@@ -80,11 +78,11 @@ pub async fn congestion_control_worker(state: distributed::Client) -> ! {
                     // Chunk data using offset
                     let offset = msg_ctx.offset.load(atomic::Ordering::Relaxed);
                     let chunk_id = msg_ctx.chunk_id.load(atomic::Ordering::Relaxed);
-                    let (data, finished) = if msg_ctx.data.len() <= offset + CHUNK_SIZE {
+                    let (data, finished) = if msg_ctx.data.len() <= offset + chunk_size {
                         // Chunk will be finished after this write
                         (msg_ctx.data.slice(offset..), true)
                     } else {
-                        (msg_ctx.data.slice(offset..offset + CHUNK_SIZE), false)
+                        (msg_ctx.data.slice(offset..offset + chunk_size), false)
                     };
                     // Create chunk
                     let chunk = MessageChunk {
@@ -105,7 +103,7 @@ pub async fn congestion_control_worker(state: distributed::Client) -> ! {
                                 // Move to next chunk
                                 msg_ctx
                                     .offset
-                                    .store(offset + CHUNK_SIZE, atomic::Ordering::Relaxed);
+                                    .store(offset + chunk_size, atomic::Ordering::Relaxed);
                                 msg_ctx
                                     .chunk_id
                                     .store(chunk_id + 1, atomic::Ordering::Relaxed);

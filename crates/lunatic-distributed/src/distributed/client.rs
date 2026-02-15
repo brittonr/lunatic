@@ -79,6 +79,16 @@ pub struct Client {
     pub inner: Arc<Inner>,
 }
 
+pub struct DistributedConfig {
+    pub chunk_size: usize,
+}
+
+impl Default for DistributedConfig {
+    fn default() -> Self {
+        Self { chunk_size: 1024 }
+    }
+}
+
 pub struct Inner {
     control_client: control::Client,
     node_client: quic::Client,
@@ -93,10 +103,16 @@ pub struct Inner {
     pub responses: DashMap<MessageId, Arc<IncomingResponse>>,
     pub response_tx: Sender<(MessageId, ResponseContent)>,
     pub has_messages: Arc<Notify>,
+    pub config: DistributedConfig,
 }
 
 impl Client {
-    pub fn new(node_id: u64, control_client: control::Client, node_client: quic::Client) -> Self {
+    pub fn new(
+        node_id: u64,
+        control_client: control::Client,
+        node_client: quic::Client,
+        config: DistributedConfig,
+    ) -> Self {
         let (send, recv) = tokio::sync::mpsc::channel(1000);
         let client = Self {
             node_id: NodeId(node_id),
@@ -111,6 +127,7 @@ impl Client {
                 responses: DashMap::new(),
                 response_tx: send,
                 has_messages: Arc::new(Notify::new()),
+                config,
             }),
         };
         tokio::spawn(congestion::congestion_control_worker(client.clone()));
