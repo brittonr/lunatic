@@ -17,13 +17,13 @@ use lunatic_error_api::ErrorCtx;
 pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()> {
-    linker.func_wrap6_async("lunatic::networking", "udp_bind", udp_bind)?;
+    linker.func_wrap_async("lunatic::networking", "udp_bind", udp_bind)?;
     linker.func_wrap("lunatic::networking", "udp_local_addr", udp_local_addr)?;
     linker.func_wrap("lunatic::networking", "udp_peer_addr", udp_peer_addr)?;
     linker.func_wrap("lunatic::networking", "drop_udp_socket", drop_udp_socket)?;
-    linker.func_wrap4_async("lunatic::networking", "udp_receive", udp_receive)?;
-    linker.func_wrap5_async("lunatic::networking", "udp_receive_from", udp_receive_from)?;
-    linker.func_wrap8_async("lunatic::networking", "udp_connect", udp_connect)?;
+    linker.func_wrap_async("lunatic::networking", "udp_receive", udp_receive)?;
+    linker.func_wrap_async("lunatic::networking", "udp_receive_from", udp_receive_from)?;
+    linker.func_wrap_async("lunatic::networking", "udp_connect", udp_connect)?;
     linker.func_wrap("lunatic::networking", "clone_udp_socket", clone_udp_socket)?;
     linker.func_wrap(
         "lunatic::networking",
@@ -45,8 +45,8 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
         "get_udp_socket_ttl",
         get_udp_socket_ttl,
     )?;
-    linker.func_wrap9_async("lunatic::networking", "udp_send_to", udp_send_to)?;
-    linker.func_wrap4_async("lunatic::networking", "udp_send", udp_send)?;
+    linker.func_wrap_async("lunatic::networking", "udp_send_to", udp_send_to)?;
+    linker.func_wrap_async("lunatic::networking", "udp_send", udp_send)?;
     Ok(())
 }
 
@@ -65,12 +65,14 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
 // * If any memory outside the guest heap space is referenced.
 fn udp_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    id_u64_ptr: u32,
+    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -130,10 +132,7 @@ fn drop_udp_socket<T: NetworkingCtx>(mut caller: Caller<T>, udp_socket_id: u64) 
 // * If any memory outside the guest heap space is referenced.
 fn udp_receive<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    socket_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
+    (socket_id, buffer_ptr, buffer_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -174,11 +173,7 @@ fn udp_receive<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn udp_receive_from<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    socket_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
-    dns_iter_ptr: u32,
+    (socket_id, buffer_ptr, buffer_len, opaque_ptr, dns_iter_ptr): (u64, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -240,14 +235,16 @@ fn udp_receive_from<T: NetworkingCtx + ErrorCtx + Send>(
 #[allow(clippy::too_many_arguments)]
 fn udp_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    udp_socket_id: u64,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    timeout_duration: u64,
-    id_u64_ptr: u32,
+    (udp_socket_id, addr_type, addr_u8_ptr, port, flow_info, scope_id, timeout_duration, id_u64_ptr): (
+        u64,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u64,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // Get the memory and the socket being connected to
@@ -397,15 +394,17 @@ fn get_udp_socket_ttl<T: NetworkingCtx>(caller: Caller<T>, udp_socket_id: u64) -
 #[allow(clippy::too_many_arguments)]
 fn udp_send_to<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    socket_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    opaque_ptr: u32,
+    (socket_id, buffer_ptr, buffer_len, addr_type, addr_u8_ptr, port, flow_info, scope_id, opaque_ptr): (
+        u64,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -457,10 +456,7 @@ fn udp_send_to<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn udp_send<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    socket_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
+    (socket_id, buffer_ptr, buffer_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;

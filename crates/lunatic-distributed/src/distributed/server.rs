@@ -54,14 +54,23 @@ pub fn root_cert(ca_cert: &str) -> Result<String> {
     Ok(std::str::from_utf8(&cert)?.to_string())
 }
 
-pub fn gen_node_cert(node_name: &str) -> Result<Certificate> {
-    let mut params = CertificateParams::new(vec![node_name.to_string()]);
+/// Generates a CSR PEM and key pair for a node.
+/// Returns (csr_pem, key_pair) - the CSR is sent to the control server for signing.
+pub fn gen_node_cert(node_name: &str) -> Result<(String, KeyPair)> {
+    let mut params = CertificateParams::new(vec![node_name.to_string()])
+        .map_err(|_| anyhow!("Error while creating node certificate params."))?;
     params
         .distinguished_name
         .push(DnType::OrganizationName, "Lunatic Inc.");
     params.distinguished_name.push(DnType::CommonName, "Node");
-    Certificate::from_params(params)
-        .map_err(|_| anyhow!("Error while generating node certificate."))
+    let key_pair = KeyPair::generate()
+        .map_err(|_| anyhow!("Error while generating node key pair."))?;
+    let csr = params
+        .serialize_request(&key_pair)
+        .map_err(|_| anyhow!("Error while generating node CSR."))?
+        .pem()
+        .map_err(|_| anyhow!("Error while serializing node CSR to PEM."))?;
+    Ok((csr, key_pair))
 }
 
 pub async fn node_server<T, E>(
@@ -72,7 +81,7 @@ pub async fn node_server<T, E>(
     key: String,
 ) -> Result<()>
 where
-    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + Sync + 'static,
+    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + 'static,
     E: Environment + 'static,
 {
     let mut quic_server = quic::new_quic_server(socket, certs, &key, &ca_cert)?;
@@ -88,7 +97,7 @@ pub async fn handle_message<T, E>(
     msg: Request,
     node_permissions: Arc<NodeEnvPermission>,
 ) where
-    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + Sync + 'static,
+    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + 'static,
     E: Environment + 'static,
 {
     if let Err(e) = handle_message_err(ctx, msg_id, msg, node_permissions).await {
@@ -103,7 +112,7 @@ async fn handle_message_err<T, E>(
     node_permissions: Arc<NodeEnvPermission>,
 ) -> Result<()>
 where
-    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + Sync + 'static,
+    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + 'static,
     E: Environment + 'static,
 {
     let env_id = match &msg {
@@ -118,37 +127,37 @@ where
         Request::Response(_) => None,
     };
     if let Some((node_id, env_id)) = env_id {
-        if let Some(ref allowed_envs) = node_permissions.0 {
-            if !allowed_envs.contains(&env_id) {
-                ctx.node_client
-                    .send_response(ResponseParams {
-                        node_id: NodeId(node_id),
-                        response: Response {
-                            message_id: msg_id,
-                            content: ResponseContent::Error(ClientError::Unexpected(format!(
+        if let Some(ref allowed_envs) = node_permissions.0
+            && !allowed_envs.contains(&env_id)
+        {
+            ctx.node_client
+                .send_response(ResponseParams {
+                    node_id: NodeId(node_id),
+                    response: Response {
+                        message_id: msg_id,
+                        content: ResponseContent::Error(ClientError::Unexpected(format!(
                     "The node sending the request does not have access to the environment {env_id}"
                 ))),
-                        },
-                    })
-                    .await?;
-                return Ok(());
-            }
+                    },
+                })
+                .await?;
+            return Ok(());
         }
-        if let Some(ref allowed_envs) = ctx.allowed_envs {
-            if !allowed_envs.contains(&env_id) {
-                ctx.node_client
-                    .send_response(ResponseParams {
-                        node_id: NodeId(node_id),
-                        response: Response {
-                            message_id: msg_id,
-                            content: ResponseContent::Error(ClientError::Unexpected(format!(
-                                "This node does not have access to environment {env_id}"
-                            ))),
-                        },
-                    })
-                    .await?;
-                return Ok(());
-            }
+        if let Some(ref allowed_envs) = ctx.allowed_envs
+            && !allowed_envs.contains(&env_id)
+        {
+            ctx.node_client
+                .send_response(ResponseParams {
+                    node_id: NodeId(node_id),
+                    response: Response {
+                        message_id: msg_id,
+                        content: ResponseContent::Error(ClientError::Unexpected(format!(
+                            "This node does not have access to environment {env_id}"
+                        ))),
+                    },
+                })
+                .await?;
+            return Ok(());
         }
     }
     match msg {
@@ -243,7 +252,7 @@ where
 
 async fn handle_spawn<T, E>(ctx: ServerCtx<T, E>, spawn: Spawn) -> Result<Result<u64, ClientError>>
 where
-    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + Sync + 'static,
+    T: ProcessState + DistributedCtx<E> + ResourceLimiter + Send + 'static,
     E: Environment + 'static,
 {
     let Spawn {

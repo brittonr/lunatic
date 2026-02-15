@@ -1,7 +1,7 @@
 [package]
 name = "lunatic-control-submillisecond"
 version = "0.13.2"
-edition = "2021"
+edition = "2024"
 description = "TBD"
 homepage = "https://lunatic.solutions"
 repository = "https://github.com/lunatic-solutions/lunatic/tree/main/crates"

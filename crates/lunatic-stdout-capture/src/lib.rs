@@ -1,13 +1,7 @@
 use std::{
-    any::Any,
     fmt::{Display, Formatter},
-    io::{stdout, Cursor, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write},
+    io::{stdout, Cursor, Read, Seek, SeekFrom, Write},
     sync::{Arc, Mutex, RwLock},
-};
-
-use wasi_common::{
-    file::{Advice, FdFlags, FileType, Filestat},
-    Error, ErrorExt, SystemTimeSpec, WasiFile,
 };
 
 // This signature looks scary, but it just means that the vector holding all output streams
@@ -106,63 +100,13 @@ impl StdoutCapture {
         let mut stream = streams[self.index].lock().unwrap();
         write!(stream, "{content}").unwrap();
     }
-}
 
-#[wiggle::async_trait]
-impl WasiFile for StdoutCapture {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    async fn datasync(&self) -> Result<(), Error> {
-        Ok(())
-    }
-    async fn sync(&self) -> Result<(), Error> {
-        Ok(())
-    }
-    async fn get_filetype(&self) -> Result<FileType, Error> {
-        Ok(FileType::Pipe)
-    }
-    async fn get_fdflags(&self) -> Result<FdFlags, Error> {
-        Ok(FdFlags::APPEND)
-    }
-    async fn set_fdflags(&mut self, _fdflags: FdFlags) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    async fn get_filestat(&self) -> Result<Filestat, Error> {
-        Ok(Filestat {
-            device_id: 0,
-            inode: 0,
-            filetype: self.get_filetype().await?,
-            nlink: 0,
-            size: 0, // XXX no way to get a size out of a Write :(
-            atim: None,
-            mtim: None,
-            ctim: None,
-        })
-    }
-    async fn set_filestat_size(&self, _size: u64) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    async fn advise(&self, _offset: u64, _len: u64, _advice: Advice) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    async fn allocate(&self, _offset: u64, _len: u64) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    async fn read_vectored<'a>(&self, _bufs: &mut [IoSliceMut<'a>]) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-    async fn read_vectored_at<'a>(
-        &self,
-        _bufs: &mut [IoSliceMut<'a>],
-        _offset: u64,
-    ) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-    async fn write_vectored<'a>(&self, bufs: &[IoSlice<'a>]) -> Result<u64, Error> {
+    /// Write bytes to the capture, echoing to stdout if configured.
+    /// Returns the number of bytes written.
+    pub fn write_bytes(&self, buf: &[u8]) -> std::io::Result<usize> {
         let streams = RwLock::read(&self.writers).unwrap();
         let mut stream = streams[self.index].lock().unwrap();
-        let n = stream.write_vectored(bufs)?;
+        let n = stream.write(buf)?;
         // Echo the captured part to stdout
         if self.echo {
             stream.seek(SeekFrom::End(-(n as i64)))?;
@@ -170,42 +114,6 @@ impl WasiFile for StdoutCapture {
             stream.read_exact(&mut echo)?;
             stdout().write_all(&echo)?;
         }
-        Ok(n.try_into()?)
-    }
-    async fn write_vectored_at<'a>(
-        &self,
-        _bufs: &[IoSlice<'a>],
-        _offset: u64,
-    ) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-    async fn seek(&self, _pos: SeekFrom) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-    async fn peek(&self, _buf: &mut [u8]) -> Result<u64, Error> {
-        Err(Error::badf())
-    }
-    async fn set_times(
-        &self,
-        _atime: Option<SystemTimeSpec>,
-        _mtime: Option<SystemTimeSpec>,
-    ) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    fn num_ready_bytes(&self) -> Result<u64, Error> {
-        Ok(0)
-    }
-    fn isatty(&self) -> bool {
-        false
-    }
-    async fn readable(&self) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-    async fn writable(&self) -> Result<(), Error> {
-        Err(Error::badf())
-    }
-
-    async fn sock_accept(&self, _fdflags: FdFlags) -> Result<Box<dyn WasiFile>, Error> {
-        Err(Error::badf())
+        Ok(n)
     }
 }

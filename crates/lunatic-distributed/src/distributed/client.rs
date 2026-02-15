@@ -291,10 +291,9 @@ pub async fn process_responses(
     loop {
         tokio::select! {
            r =  recv.recv() => {
-            if let Some((message_id, response)) = r {
-                if let Some(cell) = client.inner.responses.get(&message_id) {
+            if let Some((message_id, response)) = r
+                && let Some(cell) = client.inner.responses.get(&message_id) {
                 cell.0.set(response);
-                }
             }
            },
            _ = tokio::time::sleep(TIMEOUT) => {

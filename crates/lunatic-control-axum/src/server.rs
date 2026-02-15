@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{SocketAddr, TcpListener},
+    net::SocketAddr,
     sync::{
         atomic::{self, AtomicU64},
         Arc,
@@ -12,13 +12,15 @@ use axum::{Extension, Router};
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use lunatic_control::api::{NodeStart, Register};
-use rcgen::Certificate;
+use rcgen::{Certificate, KeyPair};
+use tokio::net::TcpListener;
 use uuid::Uuid;
 
 use crate::routes;
 
 pub struct ControlServer {
     pub ca_cert: Certificate,
+    pub ca_key_pair: KeyPair,
     pub quic_client: lunatic_distributed::quic::Client,
     pub registrations: DashMap<u64, Registered>,
     pub nodes: DashMap<u64, NodeDetails>,
@@ -46,9 +48,14 @@ pub struct NodeDetails {
 }
 
 impl ControlServer {
-    pub fn new(ca_cert: Certificate, quic_client: lunatic_distributed::quic::Client) -> Self {
+    pub fn new(
+        ca_cert: Certificate,
+        ca_key_pair: KeyPair,
+        quic_client: lunatic_distributed::quic::Client,
+    ) -> Self {
         Self {
             ca_cert,
+            ca_key_pair,
             quic_client,
             registrations: DashMap::new(),
             nodes: DashMap::new(),
@@ -102,12 +109,14 @@ impl ControlServer {
 
 fn prepare_app() -> Result<Router> {
     let ca_cert_str = lunatic_distributed::distributed::server::test_root_cert();
-    let ca_cert = lunatic_distributed::control::cert::test_root_cert()?;
+    // TODO: Update once lunatic-distributed::control::cert::test_root_cert() returns
+    // (Certificate, KeyPair) for rcgen 0.13 compatibility
+    let (ca_cert, ca_key_pair) = lunatic_distributed::control::cert::test_root_cert()?;
     let (ctrl_cert, ctrl_pk) =
-        lunatic_distributed::control::cert::default_server_certificates(&ca_cert)?;
+        lunatic_distributed::control::cert::default_server_certificates(&ca_cert, &ca_key_pair)?;
     let quic_client =
         lunatic_distributed::quic::new_quic_client(&ca_cert_str, &ctrl_cert, &ctrl_pk)?;
-    let control = Arc::new(ControlServer::new(ca_cert, quic_client));
+    let control = Arc::new(ControlServer::new(ca_cert, ca_key_pair, quic_client));
     let app = Router::new()
         .nest("/", routes::init_routes())
         .layer(Extension(control));
@@ -115,14 +124,13 @@ fn prepare_app() -> Result<Router> {
 }
 
 pub async fn control_server(http_socket: SocketAddr) -> Result<()> {
-    control_server_from_tcp(TcpListener::bind(http_socket)?).await
+    let listener = TcpListener::bind(http_socket).await?;
+    control_server_from_tcp(listener).await
 }
 
 pub async fn control_server_from_tcp(listener: TcpListener) -> Result<()> {
     let app = prepare_app()?;
 
-    axum::Server::from_tcp(listener)?
-        .serve(app.into_make_service())
-        .await?;
+    axum::serve(listener, app.into_make_service()).await?;
     Ok(())
 }

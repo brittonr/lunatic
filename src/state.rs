@@ -25,7 +25,7 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{Mutex, RwLock};
 use wasmtime::{Linker, ResourceLimiter};
-use wasmtime_wasi::WasiCtx;
+use wasmtime_wasi::p1::WasiP1Ctx;
 
 use crate::DefaultProcessConfig;
 
@@ -61,7 +61,7 @@ pub struct DefaultProcessState {
     // Resources
     resources: Resources,
     // WASI
-    wasi: WasiCtx,
+    wasi: WasiP1Ctx,
     // WASI stdout stream
     wasi_stdout: Option<StdoutCapture>,
     // WASI stderr stream
@@ -221,12 +221,22 @@ impl Debug for DefaultProcessState {
 
 // Limit the maximum memory of the process depending on the environment it was spawned in.
 impl ResourceLimiter for DefaultProcessState {
-    fn memory_growing(&mut self, _current: usize, desired: usize, _maximum: Option<usize>) -> bool {
-        desired <= self.config().get_max_memory()
+    fn memory_growing(
+        &mut self,
+        _current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
+    ) -> Result<bool> {
+        Ok(desired <= self.config().get_max_memory())
     }
 
-    fn table_growing(&mut self, _current: u32, desired: u32, _maximum: Option<u32>) -> bool {
-        desired < 100_000
+    fn table_growing(
+        &mut self,
+        _current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
+    ) -> Result<bool> {
+        Ok(desired < 100_000)
     }
 
     // Allow one instance per store
@@ -340,24 +350,26 @@ impl TimerCtx for DefaultProcessState {
 }
 
 impl LunaticWasiCtx for DefaultProcessState {
-    fn wasi(&self) -> &WasiCtx {
+    fn wasi(&self) -> &WasiP1Ctx {
         &self.wasi
     }
 
-    fn wasi_mut(&mut self) -> &mut WasiCtx {
+    fn wasi_mut(&mut self) -> &mut WasiP1Ctx {
         &mut self.wasi
     }
 
     // Redirect the stdout stream
     fn set_stdout(&mut self, stdout: StdoutCapture) {
-        self.wasi_stdout = Some(stdout.clone());
-        self.wasi.set_stdout(Box::new(stdout));
+        self.wasi_stdout = Some(stdout);
+        // TODO: In modern wasmtime-wasi, stdout is set at build time via WasiCtxBuilder.
+        // Changing it after construction requires rebuilding the WasiP1Ctx.
+        // For now, we just store the capture for retrieval.
     }
 
     // Redirect the stderr stream
     fn set_stderr(&mut self, stderr: StdoutCapture) {
-        self.wasi_stderr = Some(stderr.clone());
-        self.wasi.set_stderr(Box::new(stderr));
+        self.wasi_stderr = Some(stderr);
+        // TODO: Same as set_stdout above.
     }
 
     fn get_stdout(&self) -> Option<&StdoutCapture> {

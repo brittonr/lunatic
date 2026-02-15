@@ -54,10 +54,8 @@ where
         + ErrorCtx
         + LunaticWasiCtx
         + Send
-        + Sync
         + ResourceLimiter
         + 'static,
-    for<'a> &'a T: Send,
     T::Config: ProcessConfigCtx,
     E: Environment + 'static,
 {
@@ -169,9 +167,9 @@ where
         config_set_can_spawn_processes,
     )?;
 
-    linker.func_wrap8_async("lunatic::process", "spawn", spawn)?;
-    linker.func_wrap11_async("lunatic::process", "get_or_spawn", get_or_spawn)?;
-    linker.func_wrap1_async("lunatic::process", "sleep_ms", sleep_ms)?;
+    linker.func_wrap_async("lunatic::process", "spawn", spawn)?;
+    linker.func_wrap_async("lunatic::process", "get_or_spawn", get_or_spawn)?;
+    linker.func_wrap_async("lunatic::process", "sleep_ms", sleep_ms)?;
     linker.func_wrap("lunatic::process", "die_when_link_dies", die_when_link_dies)?;
 
     linker.func_wrap("lunatic::process", "process_id", process_id)?;
@@ -210,10 +208,10 @@ where
     }
 
     #[cfg(feature = "metrics")]
-    metrics::increment_counter!("lunatic.process.modules.compiled");
+    metrics::counter!("lunatic.process.modules.compiled").increment(1);
 
     #[cfg(feature = "metrics")]
-    metrics::increment_gauge!("lunatic.process.modules.active", 1.0);
+    metrics::gauge!("lunatic.process.modules.active").increment(1.0);
 
     #[cfg(feature = "metrics")]
     let start = Instant::now();
@@ -239,7 +237,7 @@ where
     #[cfg(feature = "metrics")]
     let duration = Instant::now() - start;
     #[cfg(feature = "metrics")]
-    metrics::histogram!("lunatic.process.modules.compiled.duration", duration);
+    metrics::histogram!("lunatic.process.modules.compiled.duration").record(duration);
 
     memory
         .write(&mut caller, id_ptr as usize, &mod_or_error_id.to_le_bytes())
@@ -256,10 +254,10 @@ fn drop_module<T: ProcessState + ProcessCtx<T>>(
     module_id: u64,
 ) -> Result<()> {
     #[cfg(feature = "metrics")]
-    metrics::increment_counter!("lunatic.process.modules.dropped");
+    metrics::counter!("lunatic.process.modules.dropped").increment(1);
 
     #[cfg(feature = "metrics")]
-    metrics::decrement_gauge!("lunatic.process.modules.active", 1.0);
+    metrics::gauge!("lunatic.process.modules.active").decrement(1.0);
 
     caller
         .data_mut()
@@ -286,9 +284,9 @@ where
     }
     let config = T::Config::default();
     #[cfg(feature = "metrics")]
-    metrics::increment_counter!("lunatic.process.configs.created");
+    metrics::counter!("lunatic.process.configs.created").increment(1);
     #[cfg(feature = "metrics")]
-    metrics::increment_gauge!("lunatic.process.configs.active", 1.0);
+    metrics::gauge!("lunatic.process.configs.active").increment(1.0);
     caller.data_mut().config_resources_mut().add(config) as i64
 }
 
@@ -306,9 +304,9 @@ fn drop_config<T: ProcessState + ProcessCtx<T>>(
         .remove(config_id)
         .or_trap("lunatic::process::drop_config: Config ID doesn't exist")?;
     #[cfg(feature = "metrics")]
-    metrics::increment_counter!("lunatic.process.configs.dropped");
+    metrics::counter!("lunatic.process.configs.dropped").increment(1);
     #[cfg(feature = "metrics")]
-    metrics::decrement_gauge!("lunatic.process.configs.active", 1.0);
+    metrics::gauge!("lunatic.process.configs.active").decrement(1.0);
     Ok(())
 }
 
@@ -538,14 +536,16 @@ where
 #[allow(clippy::too_many_arguments)]
 fn spawn<T>(
     mut caller: Caller<T>,
-    link: i64,
-    config_id: i64,
-    module_id: i64,
-    func_str_ptr: u32,
-    func_str_len: u32,
-    params_ptr: u32,
-    params_len: u32,
-    id_ptr: u32,
+    (link, config_id, module_id, func_str_ptr, func_str_len, params_ptr, params_len, id_ptr): (
+        i64,
+        i64,
+        i64,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: ProcessState
@@ -554,9 +554,7 @@ where
         + LunaticWasiCtx
         + ResourceLimiter
         + Send
-        + Sync
         + 'static,
-    for<'a> &'a T: Send,
     T::Config: ProcessConfigCtx,
 {
     Box::new(async move {
@@ -618,7 +616,7 @@ where
                 let result = match chunk[0] {
                     0x7F => Val::I32(value as i32),
                     0x7E => Val::I64(value as i64),
-                    0x7B => Val::V128(value),
+                    0x7B => Val::V128(value.into()),
                     _ => return Err(anyhow!("Unsupported type ID")),
                 };
                 Ok(result)
@@ -706,17 +704,19 @@ where
 #[allow(clippy::too_many_arguments)]
 fn get_or_spawn<T, E>(
     mut caller: Caller<T>,
-    name_str_ptr: u32,
-    name_str_len: u32,
-    link: i64,
-    config_id: i64,
-    module_id: i64,
-    func_str_ptr: u32,
-    func_str_len: u32,
-    params_ptr: u32,
-    params_len: u32,
-    node_id_ptr: u32,
-    id_ptr: u32,
+    (name_str_ptr, name_str_len, link, config_id, module_id, func_str_ptr, func_str_len, params_ptr, params_len, node_id_ptr, id_ptr): (
+        u32,
+        u32,
+        i64,
+        i64,
+        i64,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: ProcessState
@@ -726,9 +726,7 @@ where
         + LunaticWasiCtx
         + ResourceLimiter
         + Send
-        + Sync
         + 'static,
-    for<'a> &'a T: Send,
     T::Config: ProcessConfigCtx,
     E: Environment,
 {
@@ -817,7 +815,7 @@ where
                     let result = match chunk[0] {
                         0x7F => Val::I32(value as i32),
                         0x7E => Val::I64(value as i64),
-                        0x7B => Val::V128(value),
+                        0x7B => Val::V128(value.into()),
                         _ => return Err(anyhow!("Unsupported type ID")),
                     };
                     Ok(result)
@@ -904,7 +902,7 @@ where
 // Suspend process for `millis`.
 fn sleep_ms<T: ProcessState + ProcessCtx<T>>(
     _: Caller<T>,
-    millis: u64,
+    (millis,): (u64,),
 ) -> Box<dyn Future<Output = ()> + Send + '_> {
     Box::new(async move {
         tokio::time::sleep(Duration::from_millis(millis)).await;

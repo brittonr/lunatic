@@ -1,6 +1,5 @@
 use anyhow::Result;
 use lunatic_common_api::{get_memory, IntoTrap};
-use metrics::{counter, decrement_gauge, gauge, histogram, increment_counter, increment_gauge};
 use wasmtime::{Caller, Linker};
 
 /// Links the [Metrics](https://crates.io/crates/metrics) APIs
@@ -47,7 +46,7 @@ fn counter<T>(
         "lunatic::metrics::counter",
     )?;
 
-    counter!(name, value);
+    metrics::counter!(name).absolute(value);
     Ok(())
 }
 
@@ -68,7 +67,7 @@ fn increment_counter<T>(
         "lunatic::metrics::increment_counter",
     )?;
 
-    increment_counter!(name);
+    metrics::counter!(name).increment(1);
     Ok(())
 }
 
@@ -90,7 +89,7 @@ fn gauge<T>(
         "lunatic::metrics::gauge",
     )?;
 
-    gauge!(name, value);
+    metrics::gauge!(name).set(value);
     Ok(())
 }
 
@@ -112,7 +111,7 @@ fn increment_gauge<T>(
         "lunatic::metrics::increment_gauge",
     )?;
 
-    increment_gauge!(name, value);
+    metrics::gauge!(name).increment(value);
     Ok(())
 }
 
@@ -134,7 +133,7 @@ fn decrement_gauge<T>(
         "lunatic::metrics::decrement_gauge",
     )?;
 
-    decrement_gauge!(name, value);
+    metrics::gauge!(name).decrement(value);
     Ok(())
 }
 
@@ -156,6 +155,6 @@ fn histogram<T>(
         "lunatic::metrics::histogram",
     )?;
 
-    histogram!(name, value);
+    metrics::histogram!(name).record(value);
     Ok(())
 }

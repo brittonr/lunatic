@@ -53,7 +53,7 @@ pub(crate) async fn start(mut args: Args) -> Result<()> {
         wasm_args: args.wasm_args,
         dir: args.dir,
         runtime,
-        envs,
+        _envs: envs,
         env,
         distributed: None,
     })

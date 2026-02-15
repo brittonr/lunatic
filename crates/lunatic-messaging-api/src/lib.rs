@@ -35,12 +35,12 @@ pub fn register<T: ProcessState + ProcessCtx<T> + NetworkingCtx + Send + 'static
     linker.func_wrap("lunatic::message", "push_tls_stream", push_tls_stream)?;
     linker.func_wrap("lunatic::message", "take_tls_stream", take_tls_stream)?;
     linker.func_wrap("lunatic::message", "send", send)?;
-    linker.func_wrap3_async(
+    linker.func_wrap_async(
         "lunatic::message",
         "send_receive_skip_search",
         send_receive_skip_search,
     )?;
-    linker.func_wrap3_async("lunatic::message", "receive", receive)?;
+    linker.func_wrap_async("lunatic::message", "receive", receive)?;
     linker.func_wrap("lunatic::message", "push_udp_socket", push_udp_socket)?;
     linker.func_wrap("lunatic::message", "take_udp_socket", take_udp_socket)?;
 
@@ -508,9 +508,7 @@ fn send<T: ProcessState + ProcessCtx<T>>(mut caller: Caller<T>, process_id: u64)
 // * If it's called with wrong data in the scratch area.
 fn send_receive_skip_search<T: ProcessState + ProcessCtx<T> + Send>(
     mut caller: Caller<T>,
-    process_id: u64,
-    wait_on_tag: i64,
-    timeout_duration: u64,
+    (process_id, wait_on_tag, timeout_duration): (u64, i64, u64),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let message = caller
@@ -563,9 +561,7 @@ fn send_receive_skip_search<T: ProcessState + ProcessCtx<T> + Send>(
 // * If **tag_ptr + (ciovec_array_len * 8) is outside the memory
 fn receive<T: ProcessState + ProcessCtx<T> + Send>(
     mut caller: Caller<T>,
-    tag_ptr: u32,
-    tag_len: u32,
-    timeout_duration: u64,
+    (tag_ptr, tag_len, timeout_duration): (u32, u32, u64),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let tags = if tag_len > 0 {

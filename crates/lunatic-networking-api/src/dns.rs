@@ -34,7 +34,7 @@ impl Iterator for DnsIterator {
 pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()> {
-    linker.func_wrap4_async("lunatic::networking", "resolve", resolve)?;
+    linker.func_wrap_async("lunatic::networking", "resolve", resolve)?;
     linker.func_wrap(
         "lunatic::networking",
         "drop_dns_iterator",
@@ -60,10 +60,7 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
 // * If any memory outside the guest heap space is referenced.
 fn resolve<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    name_str_ptr: u32,
-    name_str_len: u32,
-    timeout_duration: u64,
-    id_u64_ptr: u32,
+    (name_str_ptr, name_str_len, timeout_duration, id_u64_ptr): (u32, u32, u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;

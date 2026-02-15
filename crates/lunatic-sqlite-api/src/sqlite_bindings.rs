@@ -36,7 +36,7 @@ pub trait SQLiteCtx {
 }
 
 // Register the SqlLite apis
-pub fn register<T: SQLiteCtx + ProcessState + Send + ErrorCtx + ResourceLimiter + Sync + 'static>(
+pub fn register<T: SQLiteCtx + ProcessState + Send + ErrorCtx + ResourceLimiter + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()>
 where
@@ -48,14 +48,14 @@ where
     linker.func_wrap("lunatic::sqlite", "bind_value", bind_value)?;
     linker.func_wrap("lunatic::sqlite", "sqlite3_changes", sqlite3_changes)?;
     linker.func_wrap("lunatic::sqlite", "statement_reset", statement_reset)?;
-    linker.func_wrap2_async("lunatic::sqlite", "last_error", last_error)?;
+    linker.func_wrap_async("lunatic::sqlite", "last_error", last_error)?;
     linker.func_wrap("lunatic::sqlite", "sqlite3_finalize", sqlite3_finalize)?;
     linker.func_wrap("lunatic::sqlite", "sqlite3_step", sqlite3_step)?;
-    linker.func_wrap3_async("lunatic::sqlite", "read_column", read_column)?;
-    linker.func_wrap2_async("lunatic::sqlite", "column_names", column_names)?;
-    linker.func_wrap2_async("lunatic::sqlite", "read_row", read_row)?;
+    linker.func_wrap_async("lunatic::sqlite", "read_column", read_column)?;
+    linker.func_wrap_async("lunatic::sqlite", "column_names", column_names)?;
+    linker.func_wrap_async("lunatic::sqlite", "read_row", read_row)?;
     linker.func_wrap("lunatic::sqlite", "column_count", column_count)?;
-    linker.func_wrap3_async("lunatic::sqlite", "column_name", column_name)?;
+    linker.func_wrap_async("lunatic::sqlite", "column_name", column_name)?;
     Ok(())
 }
 
@@ -164,7 +164,6 @@ fn query_prepare<T: ProcessState + ErrorCtx + SQLiteCtx>(
         let conn = state
             .sqlite_connections()
             .get(conn_id)
-            .take()
             .or_trap("lunatic::sqlite::query_prepare::obtain_conn")?
             .lock()
             .or_trap("lunatic::sqlite::query_prepare::obtain_conn")?;
@@ -255,11 +254,9 @@ fn statement_reset<T: ProcessState + ErrorCtx + SQLiteCtx>(
     Ok(())
 }
 
-fn read_column<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
+fn read_column<T: ProcessState + ErrorCtx + SQLiteCtx + Send>(
     mut caller: Caller<T>,
-    statement_id: u64,
-    col_idx: u32,
-    opaque_ptr: u32,
+    (statement_id, col_idx, opaque_ptr): (u64, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // get state
@@ -274,10 +271,9 @@ fn read_column<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
     })
 }
 
-fn column_names<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
+fn column_names<T: ProcessState + ErrorCtx + SQLiteCtx + Send>(
     mut caller: Caller<T>,
-    statement_id: u64,
-    opaque_ptr: u32,
+    (statement_id, opaque_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // get state
@@ -296,10 +292,9 @@ fn column_names<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
 
 // this function assumes that the row has not been read yet and therefore
 // starts at column_idx 0
-fn read_row<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
+fn read_row<T: ProcessState + ErrorCtx + SQLiteCtx + Send>(
     mut caller: Caller<T>,
-    statement_id: u64,
-    opaque_ptr: u32,
+    (statement_id, opaque_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // get state
@@ -315,10 +310,9 @@ fn read_row<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
     })
 }
 
-fn last_error<T: ProcessState + ErrorCtx + SQLiteCtx + ResourceLimiter + Send + Sync>(
+fn last_error<T: ProcessState + ErrorCtx + SQLiteCtx + ResourceLimiter + Send>(
     mut caller: Caller<T>,
-    conn_id: u64,
-    opaque_ptr: u32,
+    (conn_id, opaque_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // get state
@@ -380,11 +374,9 @@ fn column_count<T: ProcessState + ErrorCtx + SQLiteCtx>(
     Ok(statement.column_count() as u32)
 }
 
-fn column_name<T: ProcessState + ErrorCtx + SQLiteCtx + Send + Sync>(
+fn column_name<T: ProcessState + ErrorCtx + SQLiteCtx + Send>(
     mut caller: Caller<T>,
-    statement_id: u64,
-    column_idx: u32,
-    opaque_ptr: u32,
+    (statement_id, column_idx, opaque_ptr): (u64, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // get state

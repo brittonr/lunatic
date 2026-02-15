@@ -14,55 +14,54 @@ use wasmtime::{Caller, Linker};
 
 use lunatic_common_api::{get_memory, IntoTrap};
 use lunatic_error_api::ErrorCtx;
-use webpki::TrustAnchor;
 
 use crate::dns::DnsIterator;
 use crate::{socket_address, NetworkingCtx, TlsConnection, TlsListener};
-use tokio_rustls::rustls::{self, OwnedTrustAnchor};
+use tokio_rustls::rustls::{self, pki_types::ServerName};
 use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
 // Register TLS networking APIs to the linker
 pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()> {
-    linker.func_wrap10_async("lunatic::networking", "tls_bind", tls_bind)?;
+    linker.func_wrap_async("lunatic::networking", "tls_bind", tls_bind)?;
     linker.func_wrap(
         "lunatic::networking",
         "drop_tls_listener",
         drop_tls_listener,
     )?;
     linker.func_wrap("lunatic::networking", "tls_local_addr", tls_local_addr)?;
-    linker.func_wrap3_async("lunatic::networking", "tls_accept", tls_accept)?;
-    linker.func_wrap7_async("lunatic::networking", "tls_connect", tls_connect)?;
+    linker.func_wrap_async("lunatic::networking", "tls_accept", tls_accept)?;
+    linker.func_wrap_async("lunatic::networking", "tls_connect", tls_connect)?;
     linker.func_wrap("lunatic::networking", "drop_tls_stream", drop_tls_stream)?;
     linker.func_wrap("lunatic::networking", "clone_tls_stream", clone_tls_stream)?;
-    linker.func_wrap4_async(
+    linker.func_wrap_async(
         "lunatic::networking",
         "tls_write_vectored",
         tls_write_vectored,
     )?;
-    linker.func_wrap4_async("lunatic::networking", "tls_read", tls_read)?;
-    linker.func_wrap2_async(
+    linker.func_wrap_async("lunatic::networking", "tls_read", tls_read)?;
+    linker.func_wrap_async(
         "lunatic::networking",
         "set_tls_read_timeout",
         set_tls_read_timeout,
     )?;
-    linker.func_wrap2_async(
+    linker.func_wrap_async(
         "lunatic::networking",
         "set_tls_write_timeout",
         set_tls_write_timeout,
     )?;
-    linker.func_wrap1_async(
+    linker.func_wrap_async(
         "lunatic::networking",
         "get_tls_read_timeout",
         get_tls_read_timeout,
     )?;
-    linker.func_wrap1_async(
+    linker.func_wrap_async(
         "lunatic::networking",
         "get_tls_write_timeout",
         get_tls_write_timeout,
     )?;
-    linker.func_wrap2_async("lunatic::networking", "tls_flush", tls_flush)?;
+    linker.func_wrap_async("lunatic::networking", "tls_flush", tls_flush)?;
     Ok(())
 }
 
@@ -124,16 +123,18 @@ fn tls_local_addr<T: NetworkingCtx + ErrorCtx>(
 #[allow(clippy::too_many_arguments)]
 fn tls_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    id_u64_ptr: u32,
-    certs_array_ptr: u32,
-    certs_array_len: u32,
-    keys_array_ptr: u32,
-    keys_array_len: u32,
+    (
+        addr_type,
+        addr_u8_ptr,
+        port,
+        flow_info,
+        scope_id,
+        id_u64_ptr,
+        certs_array_ptr,
+        certs_array_len,
+        keys_array_ptr,
+        keys_array_len,
+    ): (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -211,9 +212,7 @@ fn drop_tls_listener<T: NetworkingCtx>(mut caller: Caller<T>, tls_listener_id: u
 // * If any memory outside the guest heap space is referenced.
 fn tls_accept<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    listener_id: u64,
-    id_u64_ptr: u32,
-    socket_addr_id_ptr: u32,
+    (listener_id, id_u64_ptr, socket_addr_id_ptr): (u64, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let tls_listener = caller
@@ -221,14 +220,13 @@ fn tls_accept<T: NetworkingCtx + ErrorCtx + Send>(
             .tls_listener_resources()
             .get(listener_id)
             .or_trap("lunatic::network::tls_accept")?;
-        let keys = tls_listener.keys.clone();
+        let keys = tls_listener.keys.clone_key();
         let certs = tls_listener.certs.clone();
 
         let (tls_stream_or_error_id, peer_addr_iter, result) =
             match tls_listener.listener.accept().await {
                 Ok((stream, socket_addr)) => {
                     let config = rustls::ServerConfig::builder()
-                        .with_safe_defaults()
                         .with_no_client_auth()
                         .with_single_cert(vec![certs], keys)
                         .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))
@@ -275,32 +273,32 @@ fn tls_accept<T: NetworkingCtx + ErrorCtx + Send>(
 }
 
 // Load private key from file.
-fn load_private_key(file: &[u8]) -> io::Result<rustls::PrivateKey> {
+fn load_private_key(file: &[u8]) -> io::Result<rustls::pki_types::PrivateKeyDer<'static>> {
     let mut reader = io::BufReader::new(file);
 
     // Load and return a single private key.
-    let keys = rustls_pemfile::pkcs8_private_keys(&mut reader)?;
+    let keys: Vec<_> = rustls_pemfile::pkcs8_private_keys(&mut reader)
+        .collect::<Result<Vec<_>, _>>()?;
     if keys.len() != 1 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(io::Error::other(
             "expected a single private key",
         ));
     }
 
-    Ok(rustls::PrivateKey(keys[0].clone()))
+    Ok(rustls::pki_types::PrivateKeyDer::Pkcs8(keys.into_iter().next().unwrap()))
 }
 
-fn load_certs(file: &[u8]) -> io::Result<rustls::Certificate> {
+fn load_certs(file: &[u8]) -> io::Result<rustls::pki_types::CertificateDer<'static>> {
     let mut reader = io::BufReader::new(file);
-    let certs = rustls_pemfile::certs(&mut reader)?;
+    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()?;
     if certs.len() != 1 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(io::Error::other(
             "expected a single private key",
         ));
     }
 
-    Ok(rustls::Certificate(certs[0].clone()))
+    Ok(certs.into_iter().next().unwrap())
 }
 
 // If timeout is specified (value different from `u64::MAX`), the function will return on timeout
@@ -318,13 +316,15 @@ fn load_certs(file: &[u8]) -> io::Result<rustls::Certificate> {
 #[allow(clippy::too_many_arguments)]
 fn tls_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    addr_str_ptr: u32,
-    addr_str_len: u32,
-    port: u32,
-    timeout_duration: u64,
-    id_u64_ptr: u32,
-    certs_array_ptr: u32,
-    certs_array_len: u32,
+    (
+        addr_str_ptr,
+        addr_str_len,
+        port,
+        timeout_duration,
+        id_u64_ptr,
+        certs_array_ptr,
+        certs_array_len,
+    ): (u32, u32, u32, u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -373,33 +373,18 @@ fn tls_connect<T: NetworkingCtx + ErrorCtx + Send>(
 
         let mut root_cert_store = rustls::RootCertStore::empty();
         if let Some(Ok(pem_list)) = cafile {
-            let trust_anchors = pem_list
-                .iter()
-                .map(|pem| {
-                    let certs =
-                        load_certs(pem).or_trap("lunatic::networking::tls_connect::load_certs")?;
-                    let ta = TrustAnchor::try_from_cert_der(&certs.0[..])
-                        .or_trap("lunatic::networking::tls_connect::load_cert DER")?;
-                    Ok(OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    ))
-                })
-                .filter_map(|r: Result<OwnedTrustAnchor>| r.ok());
-            root_cert_store.add_trust_anchors(trust_anchors);
+            for pem in &pem_list {
+                let cert_der =
+                    load_certs(pem).or_trap("lunatic::networking::tls_connect::load_certs")?;
+                root_cert_store
+                    .add(cert_der)
+                    .or_trap("lunatic::networking::tls_connect::add_cert")?;
+            }
         } else {
-            root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
-                OwnedTrustAnchor::from_subject_spki_name_constraints(
-                    ta.subject,
-                    ta.spki,
-                    ta.name_constraints,
-                )
-            }));
+            root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         }
 
         let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth(); // i guess this was previously the default?
 
@@ -414,7 +399,7 @@ fn tls_connect<T: NetworkingCtx + ErrorCtx + Send>(
             let (stream_or_error_id, result) = match result {
                 Ok(stream) => {
                     let domain = &socket_addr[..];
-                    let domain = rustls::ServerName::try_from(domain)
+                    let domain = ServerName::try_from(domain.to_owned())
                         .or_trap("lunatic::networking::tls_connect::invalid_dnsname")?;
 
                     let stream = connector
@@ -487,10 +472,7 @@ fn clone_tls_stream<T: NetworkingCtx>(mut caller: Caller<T>, tls_stream_id: u64)
 // * If any memory outside the guest heap space is referenced.
 fn tls_write_vectored<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    ciovec_array_ptr: u32,
-    ciovec_array_len: u32,
-    opaque_ptr: u32,
+    (stream_id, ciovec_array_ptr, ciovec_array_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -564,8 +546,7 @@ fn tls_write_vectored<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn set_tls_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    duration: u64,
+    (stream_id, duration): (u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -594,7 +575,7 @@ fn set_tls_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn get_tls_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     caller: Caller<T>,
-    stream_id: u64,
+    (stream_id,): (u64,),
 ) -> Box<dyn Future<Output = Result<u64>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -618,8 +599,7 @@ fn get_tls_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 pub fn set_tls_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    duration: u64,
+    (stream_id, duration): (u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -648,7 +628,7 @@ pub fn set_tls_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn get_tls_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     caller: Caller<T>,
-    stream_id: u64,
+    (stream_id,): (u64,),
 ) -> Box<dyn Future<Output = Result<u64>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -676,10 +656,7 @@ fn get_tls_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tls_read<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
+    (stream_id, buffer_ptr, buffer_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -730,8 +707,7 @@ fn tls_read<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tls_flush<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    error_id_ptr: u32,
+    (stream_id, error_id_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let stream = caller

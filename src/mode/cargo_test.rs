@@ -209,6 +209,12 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
 
     let config = Arc::new(config);
 
+    // Modes:
+    // * m: ^ and $ match begin/end of line (not string)
+    // * s: allow . to match \n
+    let panic_regex =
+        regex::Regex::new("(?ms)^thread '.*' panicked at '(.*)', ").unwrap();
+
     for test_function in test_functions {
         // Skip over filtered out functions
         if test_function.filtered {
@@ -264,6 +270,7 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
 
         let sender = sender.clone();
         let nocapture = args.nocapture;
+        let panic_regex = panic_regex.clone();
 
         tokio::task::spawn(async move {
             let result = match task.await.unwrap() {
@@ -286,33 +293,13 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
                     }
                 }
                 Err(_err) => {
-                    // Find panic output
-                    let panic_regex =
-                    // Modes:
-                    // * m: ^ and $ match begin/end of line (not string)
-                    // * s: allow . to match \n
-                    regex::Regex::new("(?ms)^thread '.*' panicked at '(.*)', ").unwrap();
-
                     let content = stdout.content();
                     let panic_detected = panic_regex.captures(&content);
 
                     // If we didn't expect a panic, but got one or were killed by a signal
-                    if test_function.panic.is_none() {
-                        // In case of --nocapture the regex will never match (content is empty).
-                        // At this point we can't be certain if there was a panic.
-                        if panic_detected.is_none() && !nocapture {
-                            stdout.push_str("note: Process trapped or received kill signal\n");
-                        }
-                        TestResult {
-                            name: test_function.function_name,
-                            status: TestStatus::Failed,
-                            stdout,
-                        }
-                    } else {
+                    if let Some(expected_panic) = test_function.panic {
                         match panic_detected {
                             Some(panic) => {
-                                // `test_function.panic` is always `Some` in this branch.
-                                let expected_panic = test_function.panic.unwrap();
                                 let panic_message = panic.get(1).map_or("", |m| m.as_str());
                                 if panic_message.contains(&expected_panic) {
                                     TestResult {
@@ -338,19 +325,29 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
                                 name: test_function.function_name,
                                 // This is only considered a success if the `expected` panic string
                                 // didn't contain anything.
-                                status: if test_function.panic.as_ref().unwrap() == "" {
+                                status: if expected_panic.is_empty() {
                                     TestStatus::PanicOk
                                 } else {
                                     stdout.push_str(
                                         &format!(
-                                            "note: Process received kill signal, but expected a panic that contains `{}`\n",
-                                            test_function.panic.unwrap()
+                                            "note: Process received kill signal, but expected a panic that contains `{expected_panic}`\n",
                                         )
                                     );
                                     TestStatus::PanicFailed
                                 },
                                 stdout,
                             },
+                        }
+                    } else {
+                        // In case of --nocapture the regex will never match (content is empty).
+                        // At this point we can't be certain if there was a panic.
+                        if panic_detected.is_none() && !nocapture {
+                            stdout.push_str("note: Process trapped or received kill signal\n");
+                        }
+                        TestResult {
+                            name: test_function.function_name,
+                            status: TestStatus::Failed,
+                            stdout,
                         }
                     }
                 }

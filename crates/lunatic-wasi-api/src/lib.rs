@@ -1,28 +1,38 @@
+use std::path::Path;
+
 use anyhow::Result;
 use lunatic_common_api::{get_memory, IntoTrap};
 use lunatic_process::state::ProcessState;
 use lunatic_stdout_capture::StdoutCapture;
 use wasmtime::{Caller, Linker};
-use wasmtime_wasi::{ambient_authority, Dir, WasiCtx, WasiCtxBuilder};
+use wasmtime_wasi::p1::WasiP1Ctx;
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
-/// Create a `WasiCtx` from configuration settings.
+/// Create a `WasiP1Ctx` from configuration settings.
 pub fn build_wasi(
     args: Option<&Vec<String>>,
     envs: Option<&Vec<(String, String)>>,
     dirs: &[(String, String)],
-) -> Result<WasiCtx> {
-    let mut wasi = WasiCtxBuilder::new().inherit_stdio();
+) -> Result<WasiP1Ctx> {
+    let mut builder = WasiCtxBuilder::new();
+    builder.inherit_stdio();
     if let Some(envs) = envs {
-        wasi = wasi.envs(envs)?;
+        for (key, value) in envs {
+            builder.env(key, value);
+        }
     }
     if let Some(args) = args {
-        wasi = wasi.args(args)?;
+        builder.args(args);
     }
     for (preopen_dir_path, resolved_path) in dirs {
-        let preopen_dir = Dir::open_ambient_dir(resolved_path, ambient_authority())?;
-        wasi = wasi.preopened_dir(preopen_dir, preopen_dir_path)?;
+        builder.preopened_dir(
+            Path::new(resolved_path),
+            preopen_dir_path,
+            DirPerms::all(),
+            FilePerms::all(),
+        )?;
     }
-    Ok(wasi.build())
+    Ok(builder.build_p1())
 }
 
 pub trait LunaticWasiConfigCtx {
@@ -32,8 +42,8 @@ pub trait LunaticWasiConfigCtx {
 }
 
 pub trait LunaticWasiCtx {
-    fn wasi(&self) -> &WasiCtx;
-    fn wasi_mut(&mut self) -> &mut WasiCtx;
+    fn wasi(&self) -> &WasiP1Ctx;
+    fn wasi_mut(&mut self) -> &mut WasiP1Ctx;
     fn set_stdout(&mut self, stdout: StdoutCapture);
     fn get_stdout(&self) -> Option<&StdoutCapture>;
     fn set_stderr(&mut self, stderr: StdoutCapture);
@@ -46,11 +56,8 @@ where
     T: ProcessState + LunaticWasiCtx + Send + 'static,
     T::Config: LunaticWasiConfigCtx,
 {
-    // Register all wasi host functions
-    wasmtime_wasi::sync::snapshots::preview_1::add_wasi_snapshot_preview1_to_linker(
-        linker,
-        |ctx| ctx.wasi_mut(),
-    )?;
+    // Register all wasi host functions using the new p1 async API
+    wasmtime_wasi::p1::add_to_linker_async(linker, |ctx| ctx.wasi_mut())?;
 
     // Register host functions to configure wasi
     linker.func_wrap(

@@ -22,40 +22,40 @@ use crate::{socket_address, NetworkingCtx, TcpConnection};
 pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()> {
-    linker.func_wrap6_async("lunatic::networking", "tcp_bind", tcp_bind)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_bind", tcp_bind)?;
     linker.func_wrap(
         "lunatic::networking",
         "drop_tcp_listener",
         drop_tcp_listener,
     )?;
     linker.func_wrap("lunatic::networking", "tcp_local_addr", tcp_local_addr)?;
-    linker.func_wrap3_async("lunatic::networking", "tcp_accept", tcp_accept)?;
-    linker.func_wrap7_async("lunatic::networking", "tcp_connect", tcp_connect)?;
-    linker.func_wrap2_async("lunatic::networking", "tcp_peer_addr", tcp_peer_addr)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_accept", tcp_accept)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_connect", tcp_connect)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_peer_addr", tcp_peer_addr)?;
     linker.func_wrap("lunatic::networking", "drop_tcp_stream", drop_tcp_stream)?;
     linker.func_wrap("lunatic::networking", "clone_tcp_stream", clone_tcp_stream)?;
-    linker.func_wrap4_async(
+    linker.func_wrap_async(
         "lunatic::networking",
         "tcp_write_vectored",
         tcp_write_vectored,
     )?;
-    linker.func_wrap4_async("lunatic::networking", "tcp_peek", tcp_peek)?;
-    linker.func_wrap4_async("lunatic::networking", "tcp_read", tcp_read)?;
-    linker.func_wrap2_async("lunatic::networking", "set_read_timeout", set_read_timeout)?;
-    linker.func_wrap2_async(
+    linker.func_wrap_async("lunatic::networking", "tcp_peek", tcp_peek)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_read", tcp_read)?;
+    linker.func_wrap_async("lunatic::networking", "set_read_timeout", set_read_timeout)?;
+    linker.func_wrap_async(
         "lunatic::networking",
         "set_write_timeout",
         set_write_timeout,
     )?;
-    linker.func_wrap2_async("lunatic::networking", "set_peek_timeout", set_peek_timeout)?;
-    linker.func_wrap1_async("lunatic::networking", "get_read_timeout", get_read_timeout)?;
-    linker.func_wrap1_async(
+    linker.func_wrap_async("lunatic::networking", "set_peek_timeout", set_peek_timeout)?;
+    linker.func_wrap_async("lunatic::networking", "get_read_timeout", get_read_timeout)?;
+    linker.func_wrap_async(
         "lunatic::networking",
         "get_write_timeout",
         get_write_timeout,
     )?;
-    linker.func_wrap1_async("lunatic::networking", "get_peek_timeout", get_peek_timeout)?;
-    linker.func_wrap2_async("lunatic::networking", "tcp_flush", tcp_flush)?;
+    linker.func_wrap_async("lunatic::networking", "get_peek_timeout", get_peek_timeout)?;
+    linker.func_wrap_async("lunatic::networking", "tcp_flush", tcp_flush)?;
     Ok(())
 }
 
@@ -73,12 +73,14 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    id_u64_ptr: u32,
+    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -177,9 +179,7 @@ fn tcp_local_addr<T: NetworkingCtx + ErrorCtx>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_accept<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    listener_id: u64,
-    id_u64_ptr: u32,
-    socket_addr_id_ptr: u32,
+    (listener_id, id_u64_ptr, socket_addr_id_ptr): (u64, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let tcp_listener = caller
@@ -240,13 +240,15 @@ fn tcp_accept<T: NetworkingCtx + ErrorCtx + Send>(
 #[allow(clippy::too_many_arguments)]
 fn tcp_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    addr_type: u32,
-    addr_u8_ptr: u32,
-    port: u32,
-    flow_info: u32,
-    scope_id: u32,
-    timeout_duration: u64,
-    id_u64_ptr: u32,
+    (addr_type, addr_u8_ptr, port, flow_info, scope_id, timeout_duration, id_u64_ptr): (
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u64,
+        u32,
+    ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -333,8 +335,7 @@ fn clone_tcp_stream<T: NetworkingCtx>(mut caller: Caller<T>, tcp_stream_id: u64)
 // * If any memory outside the guest heap space is referenced.
 fn tcp_peer_addr<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    tcp_stream_id: u64,
-    id_u64_ptr: u32,
+    (tcp_stream_id, id_u64_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let tcp_stream = caller
@@ -379,10 +380,7 @@ fn tcp_peer_addr<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_write_vectored<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    ciovec_array_ptr: u32,
-    ciovec_array_len: u32,
-    opaque_ptr: u32,
+    (stream_id, ciovec_array_ptr, ciovec_array_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -450,8 +448,7 @@ fn tcp_write_vectored<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn set_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    duration: u64,
+    (stream_id, duration): (u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -480,7 +477,7 @@ fn set_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn get_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     caller: Caller<T>,
-    stream_id: u64,
+    (stream_id,): (u64,),
 ) -> Box<dyn Future<Output = Result<u64>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -504,8 +501,7 @@ fn get_write_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 pub fn set_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    duration: u64,
+    (stream_id, duration): (u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -534,7 +530,7 @@ pub fn set_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn get_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     caller: Caller<T>,
-    stream_id: u64,
+    (stream_id,): (u64,),
 ) -> Box<dyn Future<Output = Result<u64>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -558,8 +554,7 @@ fn get_read_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 pub fn set_peek_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    duration: u64,
+    (stream_id, duration): (u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -588,7 +583,7 @@ pub fn set_peek_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If the stream ID doesn't exist.
 fn get_peek_timeout<T: NetworkingCtx + ErrorCtx + Send>(
     caller: Caller<T>,
-    stream_id: u64,
+    (stream_id,): (u64,),
 ) -> Box<dyn Future<Output = Result<u64>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -616,10 +611,7 @@ fn get_peek_timeout<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_read<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
+    (stream_id, buffer_ptr, buffer_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -672,10 +664,7 @@ fn tcp_read<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_peek<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    buffer_ptr: u32,
-    buffer_len: u32,
-    opaque_ptr: u32,
+    (stream_id, buffer_ptr, buffer_len, opaque_ptr): (u64, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let stream = caller
@@ -726,8 +715,7 @@ fn tcp_peek<T: NetworkingCtx + ErrorCtx + Send>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_flush<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    stream_id: u64,
-    error_id_ptr: u32,
+    (stream_id, error_id_ptr): (u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let stream = caller

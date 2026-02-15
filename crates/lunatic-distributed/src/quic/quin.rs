@@ -5,8 +5,8 @@ use bytes::Bytes;
 use dashmap::DashMap;
 use lunatic_process::{env::Environment, state::ProcessState};
 use quinn::{ClientConfig, Connecting, Connection, ConnectionError, Endpoint, ServerConfig};
-use rustls::server::AllowAnyAuthenticatedClient;
-use rustls_pemfile::Item;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::server::WebPkiClientVerifier;
 use wasmtime::ResourceLimiter;
 use x509_parser::{der_parser::oid, oid_registry::asn1_rs::Utf8String, prelude::FromDer};
 
@@ -48,7 +48,7 @@ fn get_cert_attrs(conn: &Connection) -> Result<CertAttrs> {
     let peer_identity = match conn
         .peer_identity()
         .ok_or(anyhow!("Peer must provide an identity."))?
-        .downcast::<Vec<rustls::Certificate>>()
+        .downcast::<Vec<CertificateDer<'static>>>()
     {
         Ok(certs) => Ok(certs),
         Err(_) => Err(anyhow!("Failed to downcast peer identity.")),
@@ -56,8 +56,8 @@ fn get_cert_attrs(conn: &Connection) -> Result<CertAttrs> {
     if peer_identity.len() != 1 {
         return Err(anyhow!("More than one identity certificate detected."));
     }
-    let cert = peer_identity.get(0).unwrap();
-    let (_rem, x509) = x509_parser::certificate::X509Certificate::from_der(&cert.0)?;
+    let cert = peer_identity.first().unwrap();
+    let (_rem, x509) = x509_parser::certificate::X509Certificate::from_der(cert.as_ref())?;
     let oid = oid!(2.5.29 .9);
     let ext = x509
         .get_extension_unique(&oid)?
@@ -66,36 +66,38 @@ fn get_cert_attrs(conn: &Connection) -> Result<CertAttrs> {
     Ok(serde_json::from_str(&value.string())?)
 }
 
-pub fn new_quic_client(ca_cert: &str, cert: &str, key: &str) -> Result<Client> {
-    let mut ca_cert = ca_cert.as_bytes();
-    let ca_cert = rustls_pemfile::read_one(&mut ca_cert)?.unwrap();
-    let ca_cert = match ca_cert {
-        Item::X509Certificate(ca_cert) => Ok(rustls::Certificate(ca_cert)),
-        _ => Err(anyhow!("Not a valid certificate.")),
-    }?;
-    let mut roots = rustls::RootCertStore::empty();
-    roots.add(&ca_cert)?;
+fn read_single_cert_der(pem_bytes: &[u8]) -> Result<CertificateDer<'static>> {
+    let mut reader = pem_bytes;
+    let cert = rustls_pemfile::certs(&mut reader)
+        .next()
+        .ok_or_else(|| anyhow!("No certificate found in PEM data"))?
+        .map_err(|e| anyhow!("Failed to parse certificate: {e}"))?;
+    Ok(cert)
+}
 
-    let mut cert = cert.as_bytes();
-    let mut key = key.as_bytes();
-    let pk = rustls_pemfile::read_one(&mut key)?.unwrap();
-    let pk = match pk {
-        Item::PKCS8Key(key) => Ok(rustls::PrivateKey(key)),
-        _ => Err(anyhow!("Not a valid private key.")),
-    }?;
-    let cert = rustls_pemfile::read_one(&mut cert)?.unwrap();
-    let cert = match cert {
-        Item::X509Certificate(cert) => Ok(rustls::Certificate(cert)),
-        _ => Err(anyhow!("Not a valid certificate")),
-    }?;
-    let cert = vec![cert];
+fn read_single_private_key(pem_bytes: &[u8]) -> Result<PrivateKeyDer<'static>> {
+    let mut reader = pem_bytes;
+    let key = rustls_pemfile::private_key(&mut reader)?
+        .ok_or_else(|| anyhow!("No private key found in PEM data"))?;
+    Ok(key)
+}
+
+pub fn new_quic_client(ca_cert: &str, cert: &str, key: &str) -> Result<Client> {
+    let ca_cert_der = read_single_cert_der(ca_cert.as_bytes())?;
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(ca_cert_der)?;
+
+    let pk = read_single_private_key(key.as_bytes())?;
+    let cert_der = read_single_cert_der(cert.as_bytes())?;
+    let cert_chain = vec![cert_der];
 
     let client_crypto = rustls::ClientConfig::builder()
-        .with_safe_defaults()
         .with_root_certificates(roots)
-        .with_client_auth_cert(cert, pk)?;
+        .with_client_auth_cert(cert_chain, pk)?;
 
-    let client_config = ClientConfig::new(Arc::new(client_crypto));
+    let client_config = ClientConfig::new(Arc::new(
+        quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)?,
+    ));
     let mut endpoint = Endpoint::client("[::]:0".parse().unwrap())?;
     endpoint.set_default_client_config(client_config);
     Ok(Client { inner: endpoint })
@@ -107,41 +109,28 @@ pub fn new_quic_server(
     key: &str,
     ca_cert: &str,
 ) -> Result<Endpoint> {
-    let mut ca_cert = ca_cert.as_bytes();
-    let ca_cert = rustls_pemfile::read_one(&mut ca_cert)?.unwrap();
-    let ca_cert = match ca_cert {
-        Item::X509Certificate(ca_cert) => Ok(rustls::Certificate(ca_cert)),
-        _ => Err(anyhow!("Not a valid certificate.")),
-    }?;
+    let ca_cert_der = read_single_cert_der(ca_cert.as_bytes())?;
     let mut roots = rustls::RootCertStore::empty();
-    roots.add(&ca_cert)?;
+    roots.add(ca_cert_der)?;
 
-    let mut key = key.as_bytes();
-    let pk = rustls_pemfile::read_one(&mut key)?.unwrap();
-    let pk = match pk {
-        Item::PKCS8Key(key) => Ok(rustls::PrivateKey(key)),
-        _ => Err(anyhow!("Not a valid private key.")),
-    }?;
+    let pk = read_single_private_key(key.as_bytes())?;
 
     let mut cert_chain = Vec::new();
     for (i, cert) in certs.iter().enumerate() {
-        let mut cert = cert.as_bytes();
-        let cert = rustls_pemfile::read_one(&mut cert)?.unwrap();
-        let cert = match cert {
-            Item::X509Certificate(cert) => Ok(rustls::Certificate(cert)),
-            _ => Err(anyhow!("Not a valid certificate")),
-        }?;
+        let cert_der = read_single_cert_der(cert.as_bytes())?;
         if i != 0 {
-            roots.add(&cert)?;
+            roots.add(cert_der.clone())?;
         }
-        cert_chain.push(cert);
+        cert_chain.push(cert_der);
     }
 
+    let client_verifier = WebPkiClientVerifier::builder(Arc::new(roots)).build()?;
+
     let server_crypto = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_client_cert_verifier(Arc::new(AllowAnyAuthenticatedClient::new(roots)))
+        .with_client_cert_verifier(client_verifier)
         .with_single_cert(cert_chain, pk)?;
-    let mut server_config = ServerConfig::with_crypto(Arc::new(server_crypto));
+    let quinn_server_config = quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)?;
+    let mut server_config = ServerConfig::with_crypto(Arc::new(quinn_server_config));
     Arc::get_mut(&mut server_config.transport)
         .unwrap()
         .keep_alive_interval(Some(Duration::from_millis(100)));
@@ -154,11 +143,18 @@ pub async fn handle_node_server<T, E>(
     ctx: distributed::server::ServerCtx<T, E>,
 ) -> Result<()>
 where
-    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + Sync + 'static,
+    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + 'static,
     E: Environment + 'static,
 {
-    while let Some(conn) = quic_server.accept().await {
-        tokio::spawn(handle_quic_connection_node(ctx.clone(), conn));
+    while let Some(incoming) = quic_server.accept().await {
+        match incoming.accept() {
+            Ok(conn) => {
+                tokio::spawn(handle_quic_connection_node(ctx.clone(), conn));
+            }
+            Err(e) => {
+                log::warn!("Failed to accept QUIC connection: {e}");
+            }
+        }
     }
     Err(anyhow!("Node server exited"))
 }
@@ -181,7 +177,7 @@ async fn handle_quic_connection_node<T, E>(
     conn: Connecting,
 ) -> Result<()>
 where
-    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + Sync + 'static,
+    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + 'static,
     E: Environment + 'static,
 {
     log::info!("New node connection");
@@ -220,7 +216,7 @@ async fn handle_quic_stream_node<T, E>(
     recv: quinn::RecvStream,
     node_permissions: Arc<NodeEnvPermission>,
 ) where
-    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + Sync + 'static,
+    T: ProcessState + ResourceLimiter + DistributedCtx<E> + Send + 'static,
     E: Environment + 'static,
 {
     let mut recv_ctx = RecvCtx {

@@ -6,7 +6,7 @@ use wasmtime::{Caller, Linker, Val};
 
 // Register the trap APIs to the linker
 pub fn register<T: Send + 'static>(linker: &mut Linker<T>) -> Result<()> {
-    linker.func_wrap2_async("lunatic::trap", "catch", catch_trap::<T>)?;
+    linker.func_wrap_async("lunatic::trap", "catch", catch_trap::<T>)?;
     Ok(())
 }
 
@@ -28,8 +28,7 @@ pub fn register<T: Send + 'static>(linker: &mut Linker<T>) -> Result<()> {
 // * If export `_lunatic_catch_trap` doesn't exist or is not a function.
 fn catch_trap<T: Send>(
     mut caller: Caller<T>,
-    function: i32,
-    pointer: i32,
+    (function, pointer): (i32, i32),
 ) -> Box<dyn Future<Output = Result<i32>> + Send + '_> {
     Box::new(async move {
         let lunatic_catch_trap = caller
@@ -44,7 +43,7 @@ fn catch_trap<T: Send>(
             .call_async(caller, &params, &mut result)
             .await;
         match execution_result {
-            Ok(()) => Ok(result.get(0).unwrap().i32().unwrap()),
+            Ok(()) => Ok(result.first().unwrap().i32().unwrap()),
             Err(_) => Ok(0),
         }
     })

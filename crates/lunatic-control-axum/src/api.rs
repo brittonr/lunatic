@@ -1,12 +1,12 @@
 use std::{fmt::Display, sync::Arc};
 
 use axum::{
-    async_trait,
-    extract::{FromRequest, FromRequestParts, Host, Path},
-    http::{self, request::Parts, Request},
+    extract::{FromRequest, FromRequestParts, Path, Request},
+    http::{self, request::Parts},
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use axum_extra::extract::Host;
 use http::header;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
@@ -117,16 +117,14 @@ impl IntoResponse for ApiError {
 
 pub struct JsonExtractor<T>(pub T);
 
-#[async_trait]
-impl<S, B, T> FromRequest<S, B> for JsonExtractor<T>
+impl<S, T> FromRequest<S> for JsonExtractor<T>
 where
-    axum::Json<T>: FromRequest<S, B, Rejection = axum::extract::rejection::JsonRejection>,
+    axum::Json<T>: FromRequest<S, Rejection = axum::extract::rejection::JsonRejection>,
     S: Send + Sync,
-    B: Send + 'static,
 {
     type Rejection = ApiError;
 
-    async fn from_request(req: Request<B>, state: &S) -> Result<JsonExtractor<T>, Self::Rejection> {
+    async fn from_request(req: Request, state: &S) -> Result<JsonExtractor<T>, Self::Rejection> {
         match Json::from_request(req, state).await {
             Ok(Json(value)) => Ok(JsonExtractor(value)),
             Err(e) => Err(ApiError::InvalidData(e.to_string())),
@@ -136,7 +134,6 @@ where
 
 pub struct PathExtractor<T>(pub T);
 
-#[async_trait]
 impl<S, T> FromRequestParts<S> for PathExtractor<T>
 where
     S: Send + Sync,
@@ -157,7 +154,6 @@ where
 
 pub struct HostExtractor(pub String);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for HostExtractor
 where
     S: Send + Sync,
@@ -184,7 +180,6 @@ pub struct NodeAuth {
     pub node_name: uuid::Uuid,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for NodeAuth
 where
     S: Send + Sync,

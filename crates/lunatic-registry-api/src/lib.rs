@@ -7,12 +7,12 @@ use lunatic_process_api::ProcessCtx;
 use wasmtime::{Caller, Linker};
 
 // Register the registry APIs to the linker
-pub fn register<T: ProcessState + ProcessCtx<T> + Send + Sync + 'static>(
+pub fn register<T: ProcessState + ProcessCtx<T> + Send + 'static>(
     linker: &mut Linker<T>,
 ) -> Result<()> {
-    linker.func_wrap4_async("lunatic::registry", "put", put)?;
-    linker.func_wrap4_async("lunatic::registry", "get", get)?;
-    linker.func_wrap2_async("lunatic::registry", "remove", remove)?;
+    linker.func_wrap_async("lunatic::registry", "put", put)?;
+    linker.func_wrap_async("lunatic::registry", "get", get)?;
+    linker.func_wrap_async("lunatic::registry", "remove", remove)?;
 
     #[cfg(feature = "metrics")]
     metrics::describe_counter!(
@@ -47,12 +47,9 @@ pub fn register<T: ProcessState + ProcessCtx<T> + Send + Sync + 'static>(
 // Traps:
 // * If the process ID doesn't exist.
 // * If any memory outside the guest heap space is referenced.
-fn put<T: ProcessState + ProcessCtx<T> + Send + Sync>(
+fn put<T: ProcessState + ProcessCtx<T> + Send>(
     mut caller: Caller<T>,
-    name_str_ptr: u32,
-    name_str_len: u32,
-    node_id: u64,
-    process_id: u64,
+    (name_str_ptr, name_str_len, node_id, process_id): (u32, u32, u64, u64),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -69,10 +66,10 @@ fn put<T: ProcessState + ProcessCtx<T> + Send + Sync>(
             .insert(name.to_owned(), (node_id, process_id));
 
         #[cfg(feature = "metrics")]
-        metrics::increment_counter!("lunatic.registry.write");
+        metrics::counter!("lunatic.registry.write").increment(1);
 
         #[cfg(feature = "metrics")]
-        metrics::increment_gauge!("lunatic.registry.registered", 1.0);
+        metrics::gauge!("lunatic.registry.registered").increment(1.0);
 
         Ok(())
     })
@@ -82,12 +79,9 @@ fn put<T: ProcessState + ProcessCtx<T> + Send + Sync>(
 //
 // Traps:
 // * If any memory outside the guest heap space is referenced.
-fn get<T: ProcessState + ProcessCtx<T> + Send + Sync>(
+fn get<T: ProcessState + ProcessCtx<T> + Send>(
     mut caller: Caller<T>,
-    name_str_ptr: u32,
-    name_str_len: u32,
-    node_id_ptr: u32,
-    process_id_ptr: u32,
+    (name_str_ptr, name_str_len, node_id_ptr, process_id_ptr): (u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -98,7 +92,7 @@ fn get<T: ProcessState + ProcessCtx<T> + Send + Sync>(
         let name = std::str::from_utf8(name).or_trap("lunatic::registry::get")?;
 
         #[cfg(feature = "metrics")]
-        metrics::increment_counter!("lunatic.registry.read");
+        metrics::counter!("lunatic.registry.read").increment(1);
 
         let (node_id, process_id) = if let Some(process) = state.registry().read().await.get(name) {
             *process
@@ -125,10 +119,9 @@ fn get<T: ProcessState + ProcessCtx<T> + Send + Sync>(
 //
 // Traps:
 // * If any memory outside the guest heap space is referenced.
-fn remove<T: ProcessState + ProcessCtx<T> + Send + Sync>(
+fn remove<T: ProcessState + ProcessCtx<T> + Send>(
     mut caller: Caller<T>,
-    name_str_ptr: u32,
-    name_str_len: u32,
+    (name_str_ptr, name_str_len): (u32, u32),
 ) -> Box<dyn Future<Output = Result<()>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -141,10 +134,10 @@ fn remove<T: ProcessState + ProcessCtx<T> + Send + Sync>(
         state.registry().write().await.remove(name);
 
         #[cfg(feature = "metrics")]
-        metrics::increment_counter!("lunatic.registry.deletion");
+        metrics::counter!("lunatic.registry.deletion").increment(1);
 
         #[cfg(feature = "metrics")]
-        metrics::decrement_gauge!("lunatic.registry.registered", 1.0);
+        metrics::gauge!("lunatic.registry.registered").decrement(1.0);
 
         Ok(())
     })

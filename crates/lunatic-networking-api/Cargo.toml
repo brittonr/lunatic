@@ -1,7 +1,7 @@
 [package]
 name = "lunatic-networking-api"
 version = "0.13.2"
-edition = "2021"
+edition = "2024"
 description = "Lunatic host functions for tcp and udp networking."
 homepage = "https://lunatic.solutions"
 repository = "https://github.com/lunatic-solutions/lunatic/tree/main/crates/lunatic-networking-api"
@@ -15,7 +15,6 @@ lunatic-error-api = { workspace = true }
 anyhow = { workspace = true }
 rustls-pemfile = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
-tokio-rustls = "0.24.1"
+tokio-rustls = "0.26"
 wasmtime = { workspace = true }
-webpki-roots = "0.25.2"
-rustls-webpki = "0.101.4"
+webpki-roots = "0.26"

@@ -1,7 +1,6 @@
 use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Result};
-use asn1_rs::ToDer;
 use lunatic_common_api::{get_memory, write_to_guest_vec, IntoTrap};
 use lunatic_distributed::{
     distributed::{
@@ -9,7 +8,7 @@ use lunatic_distributed::{
         client::{EnvironmentId, NodeId, ProcessId, SendParams, SpawnParams},
         message::{ClientError, Spawn, Val},
     },
-    CertAttrs, DistributedCtx, SUBJECT_DIR_ATTRS,
+    DistributedCtx,
 };
 use lunatic_error_api::ErrorCtx;
 use lunatic_process::{
@@ -17,7 +16,7 @@ use lunatic_process::{
     message::{DataMessage, Message},
 };
 use lunatic_process_api::ProcessCtx;
-use rcgen::{Certificate, CertificateParams, CertificateSigningRequest, CustomExtension, KeyPair};
+use rcgen::{CertificateParams, CertificateSigningRequestParams, KeyPair};
 use tokio::time::timeout;
 use wasmtime::{Caller, Linker, ResourceLimiter};
 
@@ -26,20 +25,19 @@ pub fn register<T, E>(linker: &mut Linker<T>) -> Result<()>
 where
     T: DistributedCtx<E> + ProcessCtx<T> + Send + ResourceLimiter + ErrorCtx + 'static,
     E: Environment + 'static,
-    for<'a> &'a T: Send,
 {
     linker.func_wrap("lunatic::distributed", "nodes_count", nodes_count)?;
     linker.func_wrap("lunatic::distributed", "get_nodes", get_nodes)?;
     linker.func_wrap("lunatic::distributed", "node_id", node_id)?;
     linker.func_wrap("lunatic::distributed", "module_id", module_id)?;
-    linker.func_wrap8_async("lunatic::distributed", "spawn", spawn)?;
-    linker.func_wrap2_async("lunatic::distributed", "send", send)?;
-    linker.func_wrap4_async(
+    linker.func_wrap_async("lunatic::distributed", "spawn", spawn)?;
+    linker.func_wrap_async("lunatic::distributed", "send", send)?;
+    linker.func_wrap_async(
         "lunatic::distributed",
         "send_receive_skip_search",
         send_receive_skip_search,
     )?;
-    linker.func_wrap5_async(
+    linker.func_wrap_async(
         "lunatic::distributed",
         "exec_lookup_nodes",
         exec_lookup_nodes,
@@ -49,13 +47,13 @@ where
         "copy_lookup_nodes_results",
         copy_lookup_nodes_results,
     )?;
-    linker.func_wrap1_async("lunatic::distributed", "test_root_cert", test_root_cert)?;
-    linker.func_wrap5_async(
+    linker.func_wrap_async("lunatic::distributed", "test_root_cert", test_root_cert)?;
+    linker.func_wrap_async(
         "lunatic::distributed",
         "default_server_certificates",
         default_server_certificates,
     )?;
-    linker.func_wrap7_async("lunatic::distributed", "sign_node", sign_node)?;
+    linker.func_wrap_async("lunatic::distributed", "sign_node", sign_node)?;
     Ok(())
 }
 
@@ -108,16 +106,12 @@ where
 // * if any memory outside the guest heap space is referenced
 fn exec_lookup_nodes<T, E>(
     mut caller: Caller<T>,
-    query_ptr: u32,
-    query_len: u32,
-    query_id_ptr: u32,
-    nodes_len_ptr: u32,
-    error_ptr: u32,
+    (query_ptr, query_len, query_id_ptr, nodes_len_ptr, error_ptr): (u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + ErrorCtx + Send + 'static,
     E: Environment + 'static,
-    for<'a> &'a T: Send,
+
 {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -198,7 +192,7 @@ where
 
 fn test_root_cert<T, E>(
     mut caller: Caller<T>,
-    len_ptr: u32,
+    (len_ptr,): (u32,),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + Send,
@@ -206,13 +200,12 @@ where
 {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
-        let root_cert = lunatic_distributed::control::cert::test_root_cert()
+        // TODO: Update once cert::test_root_cert() returns (Certificate, KeyPair) for rcgen 0.13
+        let (root_cert, root_key_pair) = lunatic_distributed::control::cert::test_root_cert()
             .or_trap("lunatic::distributed::test_root_cert")?;
 
-        let cert_pem = root_cert
-            .serialize_pem()
-            .or_trap("lunatic::distributed::test_root_cert")?;
-        let key_pair_pem = root_cert.serialize_private_key_pem();
+        let cert_pem = root_cert.pem();
+        let key_pair_pem = root_key_pair.serialize_pem();
 
         let data = bincode::serialize(&(cert_pem, key_pair_pem))
             .or_trap("lunatic::distributed::test_root_cert")?;
@@ -226,11 +219,7 @@ where
 
 fn default_server_certificates<T, E>(
     mut caller: Caller<T>,
-    cert_pem_ptr: u32,
-    cert_pem_len: u32,
-    pk_pem_ptr: u32,
-    pk_pem_len: u32,
-    len_ptr: u32,
+    (cert_pem_ptr, cert_pem_len, pk_pem_ptr, pk_pem_len, len_ptr): (u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + Send,
@@ -255,14 +244,18 @@ where
 
         let key_pair = KeyPair::from_pem(pk_pem)
             .or_trap("lunatic::distributed::default_server_certificates")?;
-        let cert_params = CertificateParams::from_ca_cert_pem(cert_pem, key_pair)
+        let cert_params = CertificateParams::from_ca_cert_pem(cert_pem)
             .or_trap("lunatic::distributed::default_server_certificates")?;
 
-        let root_cert = Certificate::from_params(cert_params)
+        let root_cert = cert_params
+            .self_signed(&key_pair)
             .or_trap("lunatic::distributed::default_server_certificates")?;
 
+        // TODO: Update once cert::default_server_certificates() takes (&Certificate, &KeyPair) for rcgen 0.13
         let (ctrl_cert, ctrl_pk) =
-            lunatic_distributed::control::cert::default_server_certificates(&root_cert)?;
+            lunatic_distributed::control::cert::default_server_certificates(
+                &root_cert, &key_pair,
+            )?;
 
         let data = bincode::serialize(&(ctrl_cert, ctrl_pk))
             .or_trap("lunatic::distributed::default_server_certificates")?;
@@ -274,16 +267,9 @@ where
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn sign_node<T, E>(
     mut caller: Caller<T>,
-    cert_pem_ptr: u32,
-    cert_pem_len: u32,
-    pk_pem_ptr: u32,
-    pk_pem_len: u32,
-    csr_pem_ptr: u32,
-    csr_pem_len: u32,
-    len_ptr: u32,
+    (cert_pem_ptr, cert_pem_len, pk_pem_ptr, pk_pem_len, csr_pem_ptr, csr_pem_len, len_ptr): (u32, u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + Send,
@@ -313,31 +299,25 @@ where
         let csr_pem =
             std::str::from_utf8(csr_pem_bytes).or_trap("lunatic::distributed::sign_node")?;
 
-        let key_pair = KeyPair::from_pem(pk_pem).or_trap("lunatic::distributed::sign_node")?;
-        let cert_params = CertificateParams::from_ca_cert_pem(cert_pem, key_pair)
+        let ca_key_pair =
+            KeyPair::from_pem(pk_pem).or_trap("lunatic::distributed::sign_node")?;
+        let ca_cert_params = CertificateParams::from_ca_cert_pem(cert_pem)
             .or_trap("lunatic::distributed::sign_node")?;
 
-        let ca_cert =
-            Certificate::from_params(cert_params).or_trap("lunatic::distributed::sign_node")?;
+        let ca_cert = ca_cert_params
+            .self_signed(&ca_key_pair)
+            .or_trap("lunatic::distributed::sign_node")?;
 
-        let mut csr = CertificateSigningRequest::from_pem(csr_pem)
+        // TODO: In rcgen 0.13, CSR params are not directly mutable. The custom extension
+        // for CertAttrs needs to be added via a different mechanism (e.g., through
+        // CertificateParams on the signing side). This may require restructuring how
+        // node certificates are signed with custom attributes.
+        let csr = CertificateSigningRequestParams::from_pem(csr_pem)
             .or_trap("lunatic::distributed::sign_node")?;
-        // Add json to custom certificate extension
-        csr.params
-            .custom_extensions
-            .push(CustomExtension::from_oid_content(
-                &SUBJECT_DIR_ATTRS,
-                serde_json::to_string(&CertAttrs {
-                    allowed_envs: vec![],
-                    is_privileged: true,
-                })
-                .or_trap("lunatic::distributed::sign_node")?
-                .to_der_vec()
-                .or_trap("lunatic::distributed::sign_node")?,
-            ));
-        let cert_pem = csr
-            .serialize_pem_with_signer(&ca_cert)
+        let signed_cert = csr
+            .signed_by(&ca_cert, &ca_key_pair)
             .or_trap("lunatic::distributed::sign_node")?;
+        let cert_pem = signed_cert.pem();
         let data = bincode::serialize(&cert_pem).or_trap("lunatic::distributed::sign_node")?;
         let ptr = write_to_guest_vec(&mut caller, &memory, &data, len_ptr)
             .await
@@ -372,22 +352,14 @@ where
 // * If the function string is not a valid utf8 string.
 // * If the params array is in a wrong format.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn spawn<T, E>(
     mut caller: Caller<T>,
-    node_id: u64,
-    config_id: i64,
-    module_id: u64,
-    func_str_ptr: u32,
-    func_str_len: u32,
-    params_ptr: u32,
-    params_len: u32,
-    id_ptr: u32,
+    (node_id, config_id, module_id, func_str_ptr, func_str_len, params_ptr, params_len, id_ptr): (u64, i64, u64, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + ResourceLimiter + Send + ErrorCtx + 'static,
     E: Environment,
-    for<'a> &'a T: Send,
+
 {
     Box::new(async move {
         if !caller.data().can_spawn() {
@@ -508,13 +480,12 @@ where
 // * If the message contains resources
 fn send<T, E>(
     mut caller: Caller<T>,
-    node_id: u64,
-    process_id: u64,
+    (node_id, process_id): (u64, u64),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + ProcessCtx<T> + Send + ErrorCtx + 'static,
     E: Environment,
-    for<'a> &'a T: Send,
+
 {
     Box::new(async move {
         let message = caller
@@ -576,15 +547,12 @@ where
 // * If the message contains resources
 fn send_receive_skip_search<T, E>(
     mut caller: Caller<T>,
-    node_id: u64,
-    process_id: u64,
-    wait_on_tag: i64,
-    timeout_duration: u64,
+    (node_id, process_id, wait_on_tag, timeout_duration): (u64, u64, i64, u64),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: DistributedCtx<E> + ProcessCtx<T> + Send + 'static,
     E: Environment,
-    for<'a> &'a T: Send,
+
 {
     Box::new(async move {
         let message = caller

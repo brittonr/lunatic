@@ -13,8 +13,10 @@ pub(crate) async fn start(args: Args) -> Result<()> {
     if let Some(socket) = args.bind_socket {
         log::info!("Register URL: http://{}/", socket);
         lunatic_control_axum::server::control_server(socket).await?;
-    } else if let Some(listener) = get_available_localhost() {
-        log::info!("Register URL: http://{}/", listener.local_addr().unwrap());
+    } else if let Some(std_listener) = get_available_localhost() {
+        log::info!("Register URL: http://{}/", std_listener.local_addr().unwrap());
+        std_listener.set_nonblocking(true)?;
+        let listener = tokio::net::TcpListener::from_std(std_listener)?;
         lunatic_control_axum::server::control_server_from_tcp(listener).await?;
     }
 
