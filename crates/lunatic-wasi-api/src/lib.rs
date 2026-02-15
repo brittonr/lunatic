@@ -1,21 +1,75 @@
 use std::path::Path;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use anyhow::Result;
 use lunatic_common_api::{get_memory, IntoTrap};
 use lunatic_process::state::ProcessState;
 use lunatic_stdout_capture::StdoutCapture;
+use tokio::io::AsyncWrite;
 use wasmtime::{Caller, Linker};
+use wasmtime_wasi::cli::{IsTerminal, StdoutStream};
 use wasmtime_wasi::p1::WasiP1Ctx;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
+
+/// Adapts `StdoutCapture` to `wasmtime_wasi::cli::StdoutStream`.
+#[derive(Clone)]
+struct CaptureOutputStream(StdoutCapture);
+
+impl IsTerminal for CaptureOutputStream {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+impl StdoutStream for CaptureOutputStream {
+    fn async_stream(&self) -> Box<dyn AsyncWrite + Send + Sync> {
+        Box::new(CaptureWriter(self.0.clone()))
+    }
+}
+
+/// Implements `tokio::io::AsyncWrite` by delegating to `StdoutCapture::write_bytes()`.
+///
+/// All writes are synchronous (always `Poll::Ready`) since `StdoutCapture`
+/// writes to an in-memory buffer behind a mutex.
+struct CaptureWriter(StdoutCapture);
+
+impl AsyncWrite for CaptureWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Poll::Ready(self.0.write_bytes(buf))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
 
 /// Create a `WasiP1Ctx` from configuration settings.
 pub fn build_wasi(
     args: Option<&Vec<String>>,
     envs: Option<&Vec<(String, String)>>,
     dirs: &[(String, String)],
+    stdout: Option<StdoutCapture>,
+    stderr: Option<StdoutCapture>,
 ) -> Result<WasiP1Ctx> {
     let mut builder = WasiCtxBuilder::new();
-    builder.inherit_stdio();
+    builder.inherit_stdin();
+    match stdout {
+        Some(capture) => builder.stdout(CaptureOutputStream(capture)),
+        None => builder.inherit_stdout(),
+    };
+    match stderr {
+        Some(capture) => builder.stderr(CaptureOutputStream(capture)),
+        None => builder.inherit_stderr(),
+    };
     if let Some(envs) = envs {
         for (key, value) in envs {
             builder.env(key, value);

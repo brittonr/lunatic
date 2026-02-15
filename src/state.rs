@@ -104,6 +104,8 @@ impl DefaultProcessState {
                 Some(config.command_line_arguments()),
                 Some(config.environment_variables()),
                 config.preopened_dirs(),
+                None,
+                None,
             )?,
             wasi_stdout: None,
             wasi_stderr: None,
@@ -142,6 +144,8 @@ impl ProcessState for DefaultProcessState {
                 Some(config.command_line_arguments()),
                 Some(config.environment_variables()),
                 config.preopened_dirs(),
+                None,
+                None,
             )?,
             wasi_stdout: None,
             wasi_stderr: None,
@@ -364,18 +368,32 @@ impl LunaticWasiCtx for DefaultProcessState {
         &mut self.wasi
     }
 
-    // Redirect the stdout stream
+    // Redirect the stdout stream by rebuilding the WasiP1Ctx with the capture wired in.
+    // This is always called before the process starts executing.
     fn set_stdout(&mut self, stdout: StdoutCapture) {
         self.wasi_stdout = Some(stdout);
-        // TODO: In modern wasmtime-wasi, stdout is set at build time via WasiCtxBuilder.
-        // Changing it after construction requires rebuilding the WasiP1Ctx.
-        // For now, we just store the capture for retrieval.
+        self.wasi = build_wasi(
+            Some(self.config.command_line_arguments()),
+            Some(self.config.environment_variables()),
+            self.config.preopened_dirs(),
+            self.wasi_stdout.clone(),
+            self.wasi_stderr.clone(),
+        )
+        .expect("failed to rebuild WasiP1Ctx with stdout capture");
     }
 
-    // Redirect the stderr stream
+    // Redirect the stderr stream by rebuilding the WasiP1Ctx with the capture wired in.
+    // This is always called before the process starts executing.
     fn set_stderr(&mut self, stderr: StdoutCapture) {
         self.wasi_stderr = Some(stderr);
-        // TODO: Same as set_stdout above.
+        self.wasi = build_wasi(
+            Some(self.config.command_line_arguments()),
+            Some(self.config.environment_variables()),
+            self.config.preopened_dirs(),
+            self.wasi_stdout.clone(),
+            self.wasi_stderr.clone(),
+        )
+        .expect("failed to rebuild WasiP1Ctx with stderr capture");
     }
 
     fn get_stdout(&self) -> Option<&StdoutCapture> {
@@ -481,6 +499,8 @@ impl DistributedCtx<LunaticEnvironment> for DefaultProcessState {
                 Some(config.command_line_arguments()),
                 Some(config.environment_variables()),
                 config.preopened_dirs(),
+                None,
+                None,
             )?,
             wasi_stdout: None,
             wasi_stderr: None,
