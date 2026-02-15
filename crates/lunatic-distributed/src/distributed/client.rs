@@ -89,6 +89,29 @@ impl Default for DistributedConfig {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distributed_config_default_chunk_size() {
+        let config = DistributedConfig::default();
+        assert_eq!(config.chunk_size, 1024);
+    }
+
+    #[test]
+    fn distributed_config_custom_chunk_size() {
+        let config = DistributedConfig { chunk_size: 4096 };
+        assert_eq!(config.chunk_size, 4096);
+    }
+
+    #[test]
+    fn distributed_config_min_chunk_size() {
+        let config = DistributedConfig { chunk_size: 1 };
+        assert_eq!(config.chunk_size, 1);
+    }
+}
+
 pub struct Inner {
     control_client: control::Client,
     node_client: quic::Client,

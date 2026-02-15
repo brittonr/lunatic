@@ -189,6 +189,136 @@ impl DataMessage {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_message_has_correct_tag() {
+        let msg = DataMessage::new(Some(42), 0);
+        assert_eq!(msg.tag(), Some(42));
+    }
+
+    #[test]
+    fn new_message_none_tag() {
+        let msg = DataMessage::new(None, 0);
+        assert_eq!(msg.tag(), None);
+    }
+
+    #[test]
+    fn new_message_buffer_is_empty() {
+        let msg = DataMessage::new(Some(1), 64);
+        assert!(msg.buffer().is_empty());
+        assert_eq!(msg.size(), 0);
+    }
+
+    #[test]
+    fn new_from_vec_preserves_buffer() {
+        let data = vec![1, 2, 3, 4, 5];
+        let msg = DataMessage::new_from_vec(Some(10), data.clone());
+        assert_eq!(msg.buffer(), &data);
+        assert_eq!(msg.size(), 5);
+    }
+
+    #[test]
+    fn resources_is_empty_on_new_message() {
+        let msg = DataMessage::new(None, 0);
+        assert!(msg.resources_is_empty());
+    }
+
+    #[test]
+    fn resources_is_not_empty_after_add() {
+        let mut msg = DataMessage::new(None, 0);
+        let resource: Arc<Resource> = Arc::new(42_i32);
+        msg.add_resource(resource);
+        assert!(!msg.resources_is_empty());
+    }
+
+    #[test]
+    fn into_parts_returns_tag_and_buffer() {
+        let data = vec![10, 20, 30];
+        let msg = DataMessage::new_from_vec(Some(99), data.clone());
+        let (tag, buffer) = msg.into_parts();
+        assert_eq!(tag, Some(99));
+        assert_eq!(buffer, data);
+    }
+
+    #[test]
+    fn into_parts_with_none_tag() {
+        let msg = DataMessage::new_from_vec(None, vec![1]);
+        let (tag, buffer) = msg.into_parts();
+        assert_eq!(tag, None);
+        assert_eq!(buffer, vec![1]);
+    }
+
+    #[test]
+    fn write_appends_to_buffer() {
+        let mut msg = DataMessage::new(None, 0);
+        msg.write_all(&[1, 2, 3]).unwrap();
+        msg.write_all(&[4, 5]).unwrap();
+        assert_eq!(msg.buffer(), &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn read_returns_buffer_contents() {
+        let mut msg = DataMessage::new_from_vec(None, vec![10, 20, 30, 40]);
+        let mut buf = [0u8; 4];
+        let n = msg.read(&mut buf).unwrap();
+        assert_eq!(n, 4);
+        assert_eq!(buf, [10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn read_advances_pointer() {
+        let mut msg = DataMessage::new_from_vec(None, vec![1, 2, 3, 4]);
+        let mut buf = [0u8; 2];
+        msg.read(&mut buf).unwrap();
+        assert_eq!(buf, [1, 2]);
+        msg.read(&mut buf).unwrap();
+        assert_eq!(buf, [3, 4]);
+    }
+
+    #[test]
+    fn seek_resets_read_position() {
+        let mut msg = DataMessage::new_from_vec(None, vec![1, 2, 3]);
+        let mut buf = [0u8; 3];
+        msg.read(&mut buf).unwrap();
+        assert_eq!(buf, [1, 2, 3]);
+        msg.seek(0);
+        msg.read(&mut buf).unwrap();
+        assert_eq!(buf, [1, 2, 3]);
+    }
+
+    #[test]
+    fn default_message_is_empty() {
+        let msg = DataMessage::default();
+        assert_eq!(msg.tag(), None);
+        assert!(msg.buffer().is_empty());
+        assert!(msg.resources_is_empty());
+        assert_eq!(msg.size(), 0);
+    }
+
+    #[test]
+    fn message_enum_tag_delegates_to_data_message() {
+        let data = DataMessage::new(Some(77), 0);
+        let msg = Message::Data(data);
+        assert_eq!(msg.tag(), Some(77));
+    }
+
+    #[test]
+    fn message_enum_link_died_tag() {
+        let msg = Message::LinkDied(Some(55));
+        assert_eq!(msg.tag(), Some(55));
+    }
+
+    #[test]
+    fn message_enum_process_died_has_no_tag() {
+        let msg = Message::ProcessDied(123);
+        assert_eq!(msg.tag(), None);
+        assert_eq!(msg.process_id(), Some(123));
+    }
+}
+
 impl Write for DataMessage {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend(buf);
