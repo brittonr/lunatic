@@ -212,7 +212,6 @@ where
 {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
-        // TODO: Update once cert::test_root_cert() returns (Certificate, KeyPair) for rcgen 0.13
         let (root_cert, root_key_pair) = lunatic_distributed::control::cert::test_root_cert()
             .or_trap("lunatic::distributed::test_root_cert")?;
 
@@ -263,7 +262,6 @@ where
             .self_signed(&key_pair)
             .or_trap("lunatic::distributed::default_server_certificates")?;
 
-        // TODO: Update once cert::default_server_certificates() takes (&Certificate, &KeyPair) for rcgen 0.13
         let (ctrl_cert, ctrl_pk) =
             lunatic_distributed::control::cert::default_server_certificates(
                 &root_cert, &key_pair,
@@ -320,10 +318,6 @@ where
             .self_signed(&ca_key_pair)
             .or_trap("lunatic::distributed::sign_node")?;
 
-        // TODO: In rcgen 0.13, CSR params are not directly mutable. The custom extension
-        // for CertAttrs needs to be added via a different mechanism (e.g., through
-        // CertificateParams on the signing side). This may require restructuring how
-        // node certificates are signed with custom attributes.
         let csr = CertificateSigningRequestParams::from_pem(csr_pem)
             .or_trap("lunatic::distributed::sign_node")?;
         let signed_cert = csr

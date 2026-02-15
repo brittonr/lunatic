@@ -109,8 +109,6 @@ impl ControlServer {
 
 fn prepare_app() -> Result<Router> {
     let ca_cert_str = lunatic_distributed::distributed::server::test_root_cert();
-    // TODO: Update once lunatic-distributed::control::cert::test_root_cert() returns
-    // (Certificate, KeyPair) for rcgen 0.13 compatibility
     let (ca_cert, ca_key_pair) = lunatic_distributed::control::cert::test_root_cert()?;
     let (ctrl_cert, ctrl_pk) =
         lunatic_distributed::control::cert::default_server_certificates(&ca_cert, &ca_key_pair)?;
