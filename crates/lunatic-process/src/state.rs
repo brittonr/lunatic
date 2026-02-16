@@ -63,4 +63,21 @@ pub trait ProcessState: Sized {
 
     // Registry
     fn registry(&self) -> &Arc<RwLock<HashMap<String, (u64, u64)>>>;
+
+    /// Called before a process is spawned. Default: no-op.
+    fn on_spawning(&self, _process_id: u64) {}
+
+    /// Returns a lifecycle callback that persists after the state is consumed.
+    /// The callback receives a lifecycle phase string and a process_id.
+    /// Phases: "spawned", "exiting", "exited"
+    /// Default: None (no lifecycle hooks).
+    fn lifecycle_callback(&self) -> Option<Arc<dyn Fn(&str, u64) + Send + Sync>> {
+        None
+    }
+
+    /// Transform module bytes before compilation (e.g., via plugins).
+    /// Default: returns bytes unchanged.
+    fn transform_module(&self, bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        Ok(bytes)
+    }
 }

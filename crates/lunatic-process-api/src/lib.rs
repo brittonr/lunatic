@@ -220,6 +220,19 @@ where
             .read(&caller, module_data_ptr as usize, raw_bytes.as_mut_slice())
             .or_trap("lunatic::process::compile_module")?;
 
+        // Transform module bytes through plugins before compilation
+        let raw_bytes = match caller.data().transform_module(raw_bytes) {
+            Ok(transformed) => transformed,
+            Err(error) => {
+                let memory = get_memory(&mut caller)?;
+                let error_id = caller.data_mut().error_resources_mut().add(error);
+                memory
+                    .write(&mut caller, id_ptr as usize, &error_id.to_le_bytes())
+                    .or_trap("lunatic::process::compile_module")?;
+                return Ok(1);
+            }
+        };
+
         let raw_wasm = RawWasm::new(None, raw_bytes);
         let runtime = caller.data().runtime().clone();
 

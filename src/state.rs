@@ -8,7 +8,7 @@ use lunatic_distributed::{DistributedCtx, DistributedProcessState};
 use lunatic_error_api::{ErrorCtx, ErrorResource};
 use lunatic_networking_api::{DnsIterator, TlsConnection, TlsListener};
 use lunatic_networking_api::{NetworkingCtx, TcpConnection};
-use lunatic_plugin::{PluginCtx, PluginRegistry};
+use lunatic_plugin::{LifecycleEvent, PluginCtx, PluginRegistry};
 use lunatic_process::env::{Environment, LunaticEnvironment};
 use lunatic_process::runtimes::wasmtime::{WasmtimeCompiledModule, WasmtimeRuntime};
 use lunatic_process::state::{ConfigResources, ProcessState};
@@ -218,6 +218,35 @@ impl ProcessState for DefaultProcessState {
 
     fn registry(&self) -> &Arc<RwLock<HashMap<String, (u64, u64)>>> {
         &self.registry
+    }
+
+    fn on_spawning(&self, process_id: u64) {
+        self.plugin_registry
+            .lifecycle_dispatcher()
+            .dispatch(&LifecycleEvent::ProcessSpawning { process_id });
+    }
+
+    fn lifecycle_callback(&self) -> Option<Arc<dyn Fn(&str, u64) + Send + Sync>> {
+        if self.plugin_registry.lifecycle_dispatcher().plugin_count() == 0 {
+            return None;
+        }
+        let registry = self.plugin_registry.clone();
+        Some(Arc::new(move |phase: &str, process_id: u64| {
+            let event = match phase {
+                "spawned" => LifecycleEvent::ProcessSpawned { process_id },
+                "exiting" => LifecycleEvent::ProcessExiting { process_id },
+                "exited" => LifecycleEvent::ProcessExited {
+                    process_id,
+                    error: None,
+                },
+                _ => return,
+            };
+            registry.lifecycle_dispatcher().dispatch(&event);
+        }))
+    }
+
+    fn transform_module(&self, bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        self.plugin_registry.transform_module(&bytes)
     }
 }
 

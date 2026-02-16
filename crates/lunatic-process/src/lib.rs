@@ -283,6 +283,7 @@ pub(crate) async fn new<F, S, R>(
     env: Arc<dyn Environment>,
     signal_mailbox: Arc<Mutex<UnboundedReceiver<Signal>>>,
     message_mailbox: MessageMailbox,
+    lifecycle_cb: Option<Arc<dyn Fn(&str, u64) + Send + Sync>>,
 ) -> Result<S>
 where
     S: ProcessState,
@@ -400,6 +401,11 @@ where
         }
     };
 
+    // Dispatch process exiting event
+    if let Some(ref cb) = lifecycle_cb {
+        cb("exiting", id);
+    }
+
     env.remove_process(id);
 
     let result = match result {
@@ -458,6 +464,11 @@ where
         proc.send(Signal::ProcessDied(id));
     }
 
+    // Dispatch process exited event
+    if let Some(ref cb) = lifecycle_cb {
+        cb("exited", id);
+    }
+
     result
 }
 
@@ -488,7 +499,7 @@ where
     };
     let fut = func(process.clone(), message_mailbox.clone());
     let signal_mailbox = Arc::new(Mutex::new(signal_mailbox));
-    let join = tokio::task::spawn(new(fut, id, env.clone(), signal_mailbox, message_mailbox));
+    let join = tokio::task::spawn(new(fut, id, env.clone(), signal_mailbox, message_mailbox, None));
     (join, process)
 }
 

@@ -33,16 +33,22 @@ where
 {
     let id = state.id();
     trace!("Spawning process: {}", id);
+    let lifecycle_cb = state.lifecycle_callback();
+    state.on_spawning(id);
     let signal_mailbox = state.signal_mailbox().clone();
     let message_mailbox = state.message_mailbox().clone();
 
     let instance = runtime.instantiate(module, state).await?;
     let function = function.to_string();
     let fut = async move { instance.call(&function, params).await };
-    let child_process = crate::new(fut, id, env.clone(), signal_mailbox.1, message_mailbox);
+    let child_process = crate::new(fut, id, env.clone(), signal_mailbox.1, message_mailbox, lifecycle_cb.clone());
     let child_process_handle = Arc::new(WasmProcess::new(id, signal_mailbox.0.clone()));
 
     env.add_process(id, child_process_handle.clone());
+
+    if let Some(ref cb) = lifecycle_cb {
+        cb("spawned", id);
+    }
 
     // **Child link guarantees**:
     // The link signal is going to be put inside of the child's mailbox and is going to be
