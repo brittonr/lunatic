@@ -283,7 +283,7 @@ pub(crate) async fn new<F, S, R>(
     env: Arc<dyn Environment>,
     signal_mailbox: Arc<Mutex<UnboundedReceiver<Signal>>>,
     message_mailbox: MessageMailbox,
-    lifecycle_cb: Option<Arc<dyn Fn(&str, u64) + Send + Sync>>,
+    lifecycle_cb: Option<state::LifecycleCallback>,
 ) -> Result<S>
 where
     S: ProcessState,

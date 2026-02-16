@@ -226,7 +226,7 @@ impl ProcessState for DefaultProcessState {
             .dispatch(&LifecycleEvent::ProcessSpawning { process_id });
     }
 
-    fn lifecycle_callback(&self) -> Option<Arc<dyn Fn(&str, u64) + Send + Sync>> {
+    fn lifecycle_callback(&self) -> Option<lunatic_process::state::LifecycleCallback> {
         if self.plugin_registry.lifecycle_dispatcher().plugin_count() == 0 {
             return None;
         }

@@ -19,6 +19,9 @@ pub type ConfigResources<T> = HashMapId<T>;
 pub type SignalSender = UnboundedSender<Signal>;
 pub type SignalReceiver = Arc<Mutex<UnboundedReceiver<Signal>>>;
 
+/// Callback invoked during process lifecycle phases ("spawned", "exiting", "exited").
+pub type LifecycleCallback = Arc<dyn Fn(&str, u64) + Send + Sync>;
+
 /// The internal state of a process.
 ///
 /// The `ProcessState` has two main roles:
@@ -71,7 +74,7 @@ pub trait ProcessState: Sized {
     /// The callback receives a lifecycle phase string and a process_id.
     /// Phases: "spawned", "exiting", "exited"
     /// Default: None (no lifecycle hooks).
-    fn lifecycle_callback(&self) -> Option<Arc<dyn Fn(&str, u64) + Send + Sync>> {
+    fn lifecycle_callback(&self) -> Option<LifecycleCallback> {
         None
     }
 
