@@ -601,12 +601,13 @@ mod tests {
     fn test_full_registry_lifecycle_and_transform() {
         let lifecycle_wat = r#"
             (module
+                (memory (export "memory") 1)
                 (func (export "lunatic_on_process_spawning") (param i64))
                 (func (export "lunatic_on_process_spawned") (param i64))
                 (func (export "lunatic_on_process_exiting") (param i64))
                 (func (export "lunatic_on_process_exited") (param i64))
-                (func (export "lunatic_on_module_loading"))
-                (func (export "lunatic_on_module_loaded"))
+                (func (export "lunatic_on_module_loading") (param i32 i32))
+                (func (export "lunatic_on_module_loaded") (param i32 i32))
             )
         "#;
 

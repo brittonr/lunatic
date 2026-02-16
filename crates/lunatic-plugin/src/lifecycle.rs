@@ -43,11 +43,13 @@ impl LifecycleDispatcher {
     /// For each plugin, instantiates a fresh wasm instance and calls the
     /// corresponding lifecycle hook export. Errors are logged and do not
     /// propagate -- a failing plugin never takes down the runtime.
+    ///
+    /// For module events, the module name string is written into the plugin's
+    /// exported `memory` at offset 0 and passed as `(ptr: i32, len: i32)`.
     pub fn dispatch(&self, event: &LifecycleEvent) {
         log::trace!("Lifecycle event: {event:?}, notifying {} plugins", self.plugins.len());
 
         let export_name = Self::event_export_name(event);
-        let args = Self::event_args(event);
 
         for plugin in &self.plugins {
             let engine = plugin.module.engine();
@@ -76,8 +78,18 @@ impl LifecycleDispatcher {
                 }
             };
 
-            let mut results = [];
-            if let Err(e) = func.call(&mut store, &args, &mut results) {
+            let args = match Self::build_args(event, &instance, &mut store) {
+                Ok(args) => args,
+                Err(e) => {
+                    log::warn!(
+                        "Plugin '{}': failed to prepare args for '{export_name}': {e}",
+                        plugin.info.name
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(e) = func.call(&mut store, &args, &mut []) {
                 log::warn!(
                     "Plugin '{}' hook '{export_name}' failed: {e}",
                     plugin.info.name
@@ -98,17 +110,34 @@ impl LifecycleDispatcher {
         }
     }
 
-    /// Build the argument list for a lifecycle hook call
-    fn event_args(event: &LifecycleEvent) -> Vec<Val> {
+    /// Build the argument list for a lifecycle hook call.
+    ///
+    /// Process events pass `(process_id: i64)`.
+    /// Module events write the module name into the plugin's exported memory
+    /// at offset 0 and pass `(ptr: i32, len: i32)`.
+    fn build_args(
+        event: &LifecycleEvent,
+        instance: &wasmtime::Instance,
+        store: &mut Store<()>,
+    ) -> anyhow::Result<Vec<Val>> {
         match event {
             LifecycleEvent::ProcessSpawning { process_id }
             | LifecycleEvent::ProcessSpawned { process_id }
             | LifecycleEvent::ProcessExiting { process_id }
             | LifecycleEvent::ProcessExited { process_id, .. } => {
-                vec![Val::I64(*process_id as i64)]
+                Ok(vec![Val::I64(*process_id as i64)])
             }
-            LifecycleEvent::ModuleLoading { .. } | LifecycleEvent::ModuleLoaded { .. } => {
-                vec![]
+            LifecycleEvent::ModuleLoading { module_name }
+            | LifecycleEvent::ModuleLoaded { module_name, .. } => {
+                let name_bytes = module_name.as_bytes();
+                let memory = instance
+                    .get_memory(&mut *store, "memory")
+                    .ok_or_else(|| anyhow::anyhow!("plugin must export memory for module events"))?;
+                memory.write(&mut *store, 0, name_bytes)?;
+                Ok(vec![
+                    Val::I32(0),
+                    Val::I32(name_bytes.len() as i32),
+                ])
             }
         }
     }
@@ -179,31 +208,71 @@ mod tests {
     }
 
     #[test]
-    fn test_event_args_process_events() {
-        let args =
-            LifecycleDispatcher::event_args(&LifecycleEvent::ProcessSpawned { process_id: 42 });
+    fn test_build_args_process_events() {
+        // Process events don't need memory, but build_args requires an instance
+        let engine = wasmtime::Engine::default();
+        let module = wasmtime::Module::new(&engine, "(module)").unwrap();
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+
+        let args = LifecycleDispatcher::build_args(
+            &LifecycleEvent::ProcessSpawned { process_id: 42 },
+            &instance,
+            &mut store,
+        ).unwrap();
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].unwrap_i64(), 42);
 
-        let args = LifecycleDispatcher::event_args(&LifecycleEvent::ProcessExited {
-            process_id: 99,
-            error: Some("oops".into()),
-        });
+        let args = LifecycleDispatcher::build_args(
+            &LifecycleEvent::ProcessExited { process_id: 99, error: Some("oops".into()) },
+            &instance,
+            &mut store,
+        ).unwrap();
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].unwrap_i64(), 99);
     }
 
     #[test]
-    fn test_event_args_module_events() {
-        let args = LifecycleDispatcher::event_args(&LifecycleEvent::ModuleLoading {
-            module_name: "test".into(),
-        });
-        assert!(args.is_empty());
+    fn test_build_args_module_events() {
+        // Module events need an instance with exported memory to build args
+        let engine = wasmtime::Engine::default();
+        let module = wasmtime::Module::new(&engine, "(module (memory (export \"memory\") 1))").unwrap();
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
 
-        let args = LifecycleDispatcher::event_args(&LifecycleEvent::ModuleLoaded {
-            module_name: "test".into(),
-        });
-        assert!(args.is_empty());
+        let args = LifecycleDispatcher::build_args(
+            &LifecycleEvent::ModuleLoading { module_name: "test.wasm".into() },
+            &instance,
+            &mut store,
+        ).unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].unwrap_i32(), 0); // ptr
+        assert_eq!(args[1].unwrap_i32(), 9); // len of "test.wasm"
+
+        // Verify the string was written to memory
+        let memory = instance.get_memory(&mut store, "memory").unwrap();
+        let mut buf = vec![0u8; 9];
+        memory.read(&store, 0, &mut buf).unwrap();
+        assert_eq!(&buf, b"test.wasm");
+    }
+
+    #[test]
+    fn test_build_args_module_event_no_memory() {
+        // Module events without exported memory should return an error
+        let engine = wasmtime::Engine::default();
+        let module = wasmtime::Module::new(&engine, "(module)").unwrap();
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+
+        let result = LifecycleDispatcher::build_args(
+            &LifecycleEvent::ModuleLoaded { module_name: "test".into() },
+            &instance,
+            &mut store,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
@@ -260,10 +329,13 @@ mod tests {
 
     #[test]
     fn test_dispatch_calls_module_hook() {
-        // A wasm module that exports lunatic_on_module_loaded() -> ()
+        // Module hook now receives (ptr: i32, len: i32) pointing to the module name
+        // in exported memory. This plugin stores the ptr and len in globals so
+        // we can verify dispatch called it correctly.
         let wat = r#"
             (module
-                (func (export "lunatic_on_module_loaded"))
+                (memory (export "memory") 1)
+                (func (export "lunatic_on_module_loaded") (param $ptr i32) (param $len i32))
             )
         "#;
         let engine = wasmtime::Engine::default();
@@ -280,9 +352,60 @@ mod tests {
 
         let mut dispatcher = LifecycleDispatcher::new();
         dispatcher.add_plugin(plugin);
-        // Must not panic
+        // Must not panic -- the hook receives the module name via memory
         dispatcher.dispatch(&LifecycleEvent::ModuleLoaded {
-            module_name: "test-mod".into(),
+            module_name: "test-mod.wasm".into(),
         });
+    }
+
+    #[test]
+    fn test_dispatch_module_hook_reads_name() {
+        // Verify the plugin can actually read the module name from memory.
+        // This plugin copies the name bytes to offset 1024 so we can verify
+        // the content was correctly passed.
+        let wat = r#"
+            (module
+                (memory (export "memory") 1)
+                (global (export "stored_len") (mut i32) (i32.const 0))
+
+                (func (export "lunatic_on_module_loading") (param $ptr i32) (param $len i32)
+                    (global.set 0 (local.get $len))
+                    ;; Copy name from ptr to offset 1024
+                    (memory.copy
+                        (i32.const 1024)
+                        (local.get $ptr)
+                        (local.get $len))
+                )
+            )
+        "#;
+        let engine = wasmtime::Engine::default();
+        let module = wasmtime::Module::new(&engine, wat).unwrap();
+
+        // Manually instantiate to verify memory contents after dispatch
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+
+        let event = LifecycleEvent::ModuleLoading {
+            module_name: "my_module.wasm".into(),
+        };
+        let name = "lunatic_on_module_loading";
+        let func = instance.get_func(&mut store, name).unwrap();
+        let args = LifecycleDispatcher::build_args(&event, &instance, &mut store).unwrap();
+        func.call(&mut store, &args, &mut []).unwrap();
+
+        // Read back the stored length
+        let stored_len = instance
+            .get_global(&mut store, "stored_len")
+            .unwrap()
+            .get(&mut store)
+            .unwrap_i32();
+        assert_eq!(stored_len, 14); // "my_module.wasm".len()
+
+        // Read back the copied name from offset 1024
+        let memory = instance.get_memory(&mut store, "memory").unwrap();
+        let mut buf = vec![0u8; 14];
+        memory.read(&store, 1024, &mut buf).unwrap();
+        assert_eq!(&buf, b"my_module.wasm");
     }
 }
