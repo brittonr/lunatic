@@ -505,7 +505,7 @@ impl DistributedCtx<LunaticEnvironment> for DefaultProcessState {
             wasi_stdout: None,
             wasi_stderr: None,
             initialized: false,
-            registry: Default::default(), // TODO move registry into env?
+            registry: Default::default(), // Registry is shared across processes via Arc<RwLock<>> rather than moved into Environment
             db_resources: DbResources::default(),
             plugin_registry: Default::default(),
         };
@@ -519,6 +519,7 @@ impl PluginCtx for DefaultProcessState {
     }
 }
 
+#[cfg(test)]
 mod tests {
 
     #[tokio::test]
@@ -561,5 +562,50 @@ mod tests {
         spawn_wasm(env, runtime, &module, state, "hello", Vec::new(), None)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn compile_module_on_blocking_thread_pool() {
+        use crate::state::DefaultProcessState;
+        use lunatic_process::runtimes::wasmtime::WasmtimeRuntime;
+        use lunatic_process::runtimes::RawWasm;
+
+        let mut wasmtime_config = wasmtime::Config::new();
+        wasmtime_config.async_support(true).consume_fuel(true);
+        let runtime = WasmtimeRuntime::new(&wasmtime_config).unwrap();
+
+        let raw_module = wat::parse_file("./wat/all_imports.wat").unwrap();
+        let raw_wasm = RawWasm::new(None, raw_module);
+
+        let cloned_runtime = runtime.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            cloned_runtime.compile_module::<DefaultProcessState>(raw_wasm)
+        })
+        .await;
+
+        assert!(result.is_ok(), "spawn_blocking should not panic");
+        assert!(result.unwrap().is_ok(), "compilation should succeed");
+    }
+
+    #[tokio::test]
+    async fn modules_compile_uses_blocking_pool() {
+        use crate::state::DefaultProcessState;
+        use lunatic_process::runtimes::wasmtime::WasmtimeRuntime;
+        use lunatic_process::runtimes::{Modules, RawWasm};
+
+        let mut wasmtime_config = wasmtime::Config::new();
+        wasmtime_config.async_support(true).consume_fuel(true);
+        let runtime = WasmtimeRuntime::new(&wasmtime_config).unwrap();
+
+        let modules = Modules::<DefaultProcessState>::default();
+        let raw_module = wat::parse_file("./wat/all_imports.wat").unwrap();
+        let raw_wasm = RawWasm::new(Some(42), raw_module);
+
+        let handle = modules.compile(runtime, raw_wasm);
+        let result = handle.await.unwrap();
+        assert!(result.is_ok(), "module compilation should succeed");
+
+        let stored = modules.get(42);
+        assert!(stored.is_some(), "module should be stored with id 42");
     }
 }

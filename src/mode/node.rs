@@ -64,7 +64,6 @@ pub(crate) async fn start(args: Args) -> Result<()> {
         .ok_or_else(|| anyhow!("No available localhost UDP port"))?;
     let http_client = reqwest::Client::new();
 
-    // TODO unwrap, better message
     let node_name = Uuid::new_v4();
     let node_name_str = node_name.as_hyphenated().to_string();
     let node_attributes: HashMap<String, String> = args.tag.clone().into_iter().collect();

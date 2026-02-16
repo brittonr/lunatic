@@ -317,6 +317,93 @@ mod tests {
         assert_eq!(msg.tag(), None);
         assert_eq!(msg.process_id(), Some(123));
     }
+
+    #[test]
+    fn write_then_read_roundtrip() {
+        let mut msg = DataMessage::new(Some(42), 0);
+        let payload = b"hello lunatic";
+        msg.write_all(payload).unwrap();
+
+        assert_eq!(msg.buffer(), payload);
+        assert_eq!(msg.size(), payload.len());
+
+        let mut out = vec![0u8; payload.len()];
+        msg.read_exact(&mut out).unwrap();
+        assert_eq!(out, payload);
+    }
+
+    #[test]
+    fn into_parts_after_write() {
+        let mut msg = DataMessage::new(Some(7), 0);
+        msg.write_all(b"abc").unwrap();
+        msg.write_all(b"def").unwrap();
+        let (tag, buffer) = msg.into_parts();
+        assert_eq!(tag, Some(7));
+        assert_eq!(buffer, b"abcdef");
+    }
+
+    #[test]
+    fn resources_not_included_in_into_parts() {
+        let mut msg = DataMessage::new(None, 0);
+        msg.write_all(b"data").unwrap();
+        let resource: Arc<Resource> = Arc::new(String::from("a resource"));
+        msg.add_resource(resource);
+        assert!(!msg.resources_is_empty());
+        let (tag, buffer) = msg.into_parts();
+        assert_eq!(tag, None);
+        assert_eq!(buffer, b"data");
+    }
+
+    #[test]
+    fn multiple_resources_tracked() {
+        let mut msg = DataMessage::new(None, 0);
+        assert!(msg.resources_is_empty());
+        let r1: Arc<Resource> = Arc::new(1_u32);
+        let r2: Arc<Resource> = Arc::new(2_u32);
+        let idx1 = msg.add_resource(r1);
+        let idx2 = msg.add_resource(r2);
+        assert_eq!(idx1, 0);
+        assert_eq!(idx2, 1);
+        assert!(!msg.resources_is_empty());
+    }
+
+    #[test]
+    fn read_empty_buffer_returns_zero() {
+        let mut msg = DataMessage::new(None, 0);
+        let mut buf = [0u8; 4];
+        let n = msg.read(&mut buf).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn partial_read_then_seek_back() {
+        let mut msg = DataMessage::new_from_vec(None, vec![10, 20, 30, 40, 50]);
+        let mut buf = [0u8; 3];
+        msg.read(&mut buf).unwrap();
+        assert_eq!(buf, [10, 20, 30]);
+        msg.seek(1);
+        let mut buf2 = [0u8; 2];
+        msg.read(&mut buf2).unwrap();
+        assert_eq!(buf2, [20, 30]);
+    }
+
+    #[test]
+    fn size_reflects_written_data() {
+        let mut msg = DataMessage::new(None, 128);
+        assert_eq!(msg.size(), 0);
+        msg.write_all(&[0; 50]).unwrap();
+        assert_eq!(msg.size(), 50);
+        msg.write_all(&[0; 30]).unwrap();
+        assert_eq!(msg.size(), 80);
+    }
+
+    #[test]
+    fn data_message_with_negative_tag() {
+        let msg = DataMessage::new(Some(-1), 0);
+        assert_eq!(msg.tag(), Some(-1));
+        let (tag, _) = msg.into_parts();
+        assert_eq!(tag, Some(-1));
+    }
 }
 
 impl Write for DataMessage {

@@ -669,7 +669,6 @@ where
             }
         }
 
-        // set state instead of config TODO
         let env = caller.data().environment();
         let (proc_or_error_id, result) = match lunatic_process::wasm::spawn_wasm(
             env, runtime, &module, new_state, function, params, link,
@@ -868,7 +867,6 @@ where
                 }
             }
 
-            // set state instead of config TODO
             let env = state.environment();
             let (proc_or_error_id, result) = match lunatic_process::wasm::spawn_wasm(
                 env, runtime, &module, new_state, function, params, link,

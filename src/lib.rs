@@ -28,7 +28,11 @@ Wasm modules, checkout out the [lunatic crate](https://crates.io/crates/lunatic)
 
 ## WebAssembly module requirements
 
-TODO
+WebAssembly modules running on lunatic must be compiled for the `wasm32-wasi` target. Each module
+should export an entry point function (typically `_start` for WASI modules). Modules may import
+host functions from the `lunatic::` namespace for process management, messaging, networking,
+and other runtime capabilities. See `wat/all_imports.wat` for a complete list of available
+host function imports.
 */
 
 mod config;
