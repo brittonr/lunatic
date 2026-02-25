@@ -41,8 +41,7 @@ async fn main() -> Result<()> {
             // _manifest_dir is not used as a prefix because it breaks testing in workspaces where
             // the `target` dir lives outside the manifest dir.
             let test_path_matcher: PathBuf = [
-                "target",
-                "wasm32-(wasi|unknown-unknown)",
+                "wasm32-(wasi|wasip1|wasip2|unknown-unknown)",
                 "(debug|release)",
                 "deps",
             ]
