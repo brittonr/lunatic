@@ -1,5 +1,5 @@
 use anyhow::Result;
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use wasmtime::{Caller, Linker};
 
 /// Links the [Metrics](https://crates.io/crates/metrics) APIs

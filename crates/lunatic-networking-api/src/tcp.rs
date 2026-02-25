@@ -12,11 +12,11 @@ use tokio::{
 };
 use wasmtime::{Caller, Linker};
 
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_error_api::ErrorCtx;
 
 use crate::dns::DnsIterator;
-use crate::{socket_address, NetworkingCtx, TcpConnection};
+use crate::{NetworkingCtx, TcpConnection, socket_address};
 
 // Register TCP networking APIs to the linker
 pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
@@ -73,14 +73,7 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
 // * If any memory outside the guest heap space is referenced.
 fn tcp_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-    ),
+    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -237,7 +230,6 @@ fn tcp_accept<T: NetworkingCtx + ErrorCtx + Send>(
 // Traps:
 // * If **addr_type** is neither 4 or 6.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn tcp_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
     (addr_type, addr_u8_ptr, port, flow_info, scope_id, timeout_duration, id_u64_ptr): (

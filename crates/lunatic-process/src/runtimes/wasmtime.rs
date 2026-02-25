@@ -4,9 +4,9 @@ use anyhow::Result;
 use wasmtime::ResourceLimiter;
 
 use crate::{
+    ExecutionResult, ResultValue,
     config::{ProcessConfig, UNIT_OF_COMPUTE_IN_INSTRUCTIONS},
     state::ProcessState,
-    ExecutionResult, ResultValue,
 };
 
 use super::RawWasm;

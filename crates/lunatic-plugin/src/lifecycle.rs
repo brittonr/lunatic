@@ -14,7 +14,10 @@ pub enum LifecycleEvent {
     /// A process is about to exit
     ProcessExiting { process_id: u64 },
     /// A process has exited
-    ProcessExited { process_id: u64, error: Option<String> },
+    ProcessExited {
+        process_id: u64,
+        error: Option<String>,
+    },
     /// A module is being loaded
     ModuleLoading { module_name: String },
     /// A module has been loaded
@@ -47,7 +50,10 @@ impl LifecycleDispatcher {
     /// For module events, the module name string is written into the plugin's
     /// exported `memory` at offset 0 and passed as `(ptr: i32, len: i32)`.
     pub fn dispatch(&self, event: &LifecycleEvent) {
-        log::trace!("Lifecycle event: {event:?}, notifying {} plugins", self.plugins.len());
+        log::trace!(
+            "Lifecycle event: {event:?}, notifying {} plugins",
+            self.plugins.len()
+        );
 
         let export_name = Self::event_export_name(event);
 
@@ -130,14 +136,11 @@ impl LifecycleDispatcher {
             LifecycleEvent::ModuleLoading { module_name }
             | LifecycleEvent::ModuleLoaded { module_name, .. } => {
                 let name_bytes = module_name.as_bytes();
-                let memory = instance
-                    .get_memory(&mut *store, "memory")
-                    .ok_or_else(|| anyhow::anyhow!("plugin must export memory for module events"))?;
+                let memory = instance.get_memory(&mut *store, "memory").ok_or_else(|| {
+                    anyhow::anyhow!("plugin must export memory for module events")
+                })?;
                 memory.write(&mut *store, 0, name_bytes)?;
-                Ok(vec![
-                    Val::I32(0),
-                    Val::I32(name_bytes.len() as i32),
-                ])
+                Ok(vec![Val::I32(0), Val::I32(name_bytes.len() as i32)])
             }
         }
     }
@@ -220,15 +223,20 @@ mod tests {
             &LifecycleEvent::ProcessSpawned { process_id: 42 },
             &instance,
             &mut store,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].unwrap_i64(), 42);
 
         let args = LifecycleDispatcher::build_args(
-            &LifecycleEvent::ProcessExited { process_id: 99, error: Some("oops".into()) },
+            &LifecycleEvent::ProcessExited {
+                process_id: 99,
+                error: Some("oops".into()),
+            },
             &instance,
             &mut store,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].unwrap_i64(), 99);
     }
@@ -237,16 +245,20 @@ mod tests {
     fn test_build_args_module_events() {
         // Module events need an instance with exported memory to build args
         let engine = wasmtime::Engine::default();
-        let module = wasmtime::Module::new(&engine, "(module (memory (export \"memory\") 1))").unwrap();
+        let module =
+            wasmtime::Module::new(&engine, "(module (memory (export \"memory\") 1))").unwrap();
         let mut store = Store::new(&engine, ());
         let linker = Linker::<()>::new(&engine);
         let instance = linker.instantiate(&mut store, &module).unwrap();
 
         let args = LifecycleDispatcher::build_args(
-            &LifecycleEvent::ModuleLoading { module_name: "test.wasm".into() },
+            &LifecycleEvent::ModuleLoading {
+                module_name: "test.wasm".into(),
+            },
             &instance,
             &mut store,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(args.len(), 2);
         assert_eq!(args[0].unwrap_i32(), 0); // ptr
         assert_eq!(args[1].unwrap_i32(), 9); // len of "test.wasm"
@@ -268,7 +280,9 @@ mod tests {
         let instance = linker.instantiate(&mut store, &module).unwrap();
 
         let result = LifecycleDispatcher::build_args(
-            &LifecycleEvent::ModuleLoaded { module_name: "test".into() },
+            &LifecycleEvent::ModuleLoaded {
+                module_name: "test".into(),
+            },
             &instance,
             &mut store,
         );

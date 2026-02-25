@@ -81,10 +81,9 @@ pub enum Val {
     V128(u128),
 }
 
-#[allow(clippy::from_over_into)]
-impl Into<wasmtime::Val> for Val {
-    fn into(self) -> wasmtime::Val {
-        match self {
+impl From<Val> for wasmtime::Val {
+    fn from(val: Val) -> Self {
+        match val {
             Val::I32(v) => wasmtime::Val::I32(v),
             Val::I64(v) => wasmtime::Val::I64(v),
             Val::V128(v) => wasmtime::Val::V128(v.into()),

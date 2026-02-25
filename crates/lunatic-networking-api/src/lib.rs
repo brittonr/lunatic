@@ -11,14 +11,14 @@ use std::time::Duration;
 use anyhow::Result;
 use hash_map_id::HashMapId;
 use lunatic_error_api::ErrorCtx;
-use tokio::io::{split, ReadHalf, WriteHalf};
+use tokio::io::{ReadHalf, WriteHalf, split};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::Mutex;
 
 use anyhow::anyhow;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::TlsStream;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use wasmtime::Memory;
 use wasmtime::{Caller, Linker};
 

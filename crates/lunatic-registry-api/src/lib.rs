@@ -3,7 +3,7 @@
 use std::future::Future;
 
 use anyhow::Result;
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_process::state::ProcessState;
 use lunatic_process_api::ProcessCtx;
 use wasmtime::{Caller, Linker};

@@ -2,6 +2,8 @@
 
 mod lifecycle;
 mod module_context;
+#[cfg(test)]
+mod test_plugin;
 
 pub use lifecycle::{LifecycleDispatcher, LifecycleEvent};
 pub use module_context::ModuleContext;
@@ -173,9 +175,7 @@ impl PluginRegistry {
             linker.func_wrap(
                 "lunatic_plugin",
                 "input_size",
-                |caller: Caller<PluginHostState>| -> i32 {
-                    caller.data().input_bytes.len() as i32
-                },
+                |caller: Caller<PluginHostState>| -> i32 { caller.data().input_bytes.len() as i32 },
             )?;
 
             linker.func_wrap(

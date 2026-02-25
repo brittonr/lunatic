@@ -10,7 +10,7 @@ use std::{
 use anyhow::Result;
 use hash_map_id::HashMapId;
 use lunatic_common_api::IntoTrap;
-use lunatic_process::{state::ProcessState, Signal};
+use lunatic_process::{Signal, state::ProcessState};
 use lunatic_process_api::ProcessCtx;
 use tokio::task::JoinHandle;
 use wasmtime::{Caller, Linker};

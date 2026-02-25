@@ -1,12 +1,12 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Args;
 
 use lunatic_distributed::DistributedProcessState;
 use lunatic_process::{
     env::{Environment, LunaticEnvironment, LunaticEnvironments},
-    runtimes::{wasmtime::WasmtimeRuntime, RawWasm},
+    runtimes::{RawWasm, wasmtime::WasmtimeRuntime},
     wasm::spawn_wasm,
 };
 use lunatic_process_api::ProcessConfigCtx;

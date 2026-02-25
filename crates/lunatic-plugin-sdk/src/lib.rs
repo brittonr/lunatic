@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// WebAssembly value types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -216,10 +216,7 @@ mod tests {
 
     #[test]
     fn test_encode_locals() {
-        let locals = vec![
-            Local::new(1, ValType::I32),
-            Local::new(2, ValType::I64),
-        ];
+        let locals = vec![Local::new(1, ValType::I32), Local::new(2, ValType::I64)];
         let encoded = encode_locals(&locals);
         assert_eq!(encoded.len(), 10);
         assert_eq!(&encoded[0..5], &[1, 0, 0, 0, 0x7F]);
@@ -230,10 +227,8 @@ mod tests {
     fn test_plugin_builder() {
         let mut builder = PluginBuilder::new();
 
-        let type_idx = builder.add_function_type(FunctionType::new(
-            vec![ValType::I32],
-            vec![ValType::I32],
-        ));
+        let type_idx =
+            builder.add_function_type(FunctionType::new(vec![ValType::I32], vec![ValType::I32]));
         assert_eq!(type_idx, TypeIndex(0));
 
         let func_idx = builder.add_function(
@@ -269,10 +264,7 @@ mod tests {
 
     #[test]
     fn test_function_type() {
-        let ft = FunctionType::new(
-            vec![ValType::I32, ValType::I64],
-            vec![ValType::F32],
-        );
+        let ft = FunctionType::new(vec![ValType::I32, ValType::I64], vec![ValType::F32]);
         assert_eq!(ft.params.len(), 2);
         assert_eq!(ft.returns.len(), 1);
     }

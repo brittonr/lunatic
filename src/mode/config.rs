@@ -5,14 +5,14 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use log::debug;
 use reqwest::{
+    Method, StatusCode, Url,
     header::{self, HeaderMap},
     multipart::{self, Form},
-    Method, StatusCode, Url,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 static VERSION: &str = "0.1.0";
 
@@ -55,7 +55,11 @@ impl FileBased for ProjectLunaticConfig {
     fn get_file_path() -> Result<PathBuf, ConfigError> {
         let current_dir = match std::env::current_dir() {
             Ok(dir) => dir,
-            Err(_) => return Err(ConfigError::FileMissing("Failed to find lunatic.toml in working directory and parent directories. Are you sure you're in the correct directory?")),
+            Err(_) => {
+                return Err(ConfigError::FileMissing(
+                    "Failed to find lunatic.toml in working directory and parent directories. Are you sure you're in the correct directory?",
+                ));
+            }
         };
         Ok(current_dir.join("lunatic.toml"))
     }
@@ -108,7 +112,7 @@ impl Default for GlobalLunaticConfig {
         Self {
             version: VERSION.to_string(),
             provider: None,
-            cli_app_id: uuid::Uuid::new_v4().to_string(),
+            cli_app_id: uuid::Uuid::now_v7().to_string(),
         }
     }
 }
@@ -243,14 +247,18 @@ impl ConfigManager {
         let status = response.status();
         if !status.is_success() {
             if status == StatusCode::UNAUTHORIZED {
-                println!("\n\nYou are not authenticated. Please login again via `lunatic login` command.\n\n");
+                println!(
+                    "\n\nYou are not authenticated. Please login again via `lunatic login` command.\n\n"
+                );
             }
             let body = response.json::<ApiError>().await.with_context(|| {
                 format!("Error parsing body as json. Resposnse not successful: {status}")
             })?;
 
             if body.code.as_str() == "lunatic_cli_update_required" {
-                println!("\n\nLunatic version missmatch. Install the latest `lunatic-runtime` version, e.g. `cargo install lunatic-runtime`.\n\n")
+                println!(
+                    "\n\nLunatic version missmatch. Install the latest `lunatic-runtime` version, e.g. `cargo install lunatic-runtime`.\n\n"
+                )
             }
             Err(anyhow!(
                 "HTTP {description} request returned an error response.\n\nStatus: {status}\n\nCode: {}\n\nMessage: {}\n\n",

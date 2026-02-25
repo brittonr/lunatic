@@ -68,7 +68,14 @@ impl LunaticWasiConfigCtx for DefaultProcessConfig {
 
     fn preopen_dir(&mut self, dir: String) {
         let resolved_path = if &dir == "~" {
-            dirs::home_dir().unwrap().to_str().unwrap().to_string()
+            dirs::home_dir()
+                .and_then(|p| p.to_str().map(String::from))
+                .unwrap_or_else(|| {
+                    log::warn!(
+                        "Could not resolve home directory for preopened dir '~', using literal path"
+                    );
+                    dir.clone()
+                })
         } else {
             dir.clone()
         };
@@ -85,9 +92,10 @@ impl DefaultProcessConfig {
     pub fn preopen_dir<S: Into<String>>(&mut self, dir: S) {
         let dir = dir.into();
         let resolved_path = if &dir == "~" {
-            fs::canonicalize(dir.clone())
-                .map(|p| p.to_str().unwrap().to_string())
-                .unwrap_or_else(|_| dir.clone())
+            fs::canonicalize(&dir)
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
+                .unwrap_or_else(|| dir.clone())
         } else {
             dir.clone()
         };
@@ -194,7 +202,7 @@ fn strip_file(path: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
 
 fn get_absolute_path(path: &std::path::Path) -> std::io::Result<PathBuf> {
     let path = if path.is_relative() {
-        Path::join(std::env::current_dir().unwrap().as_path(), path)
+        Path::join(std::env::current_dir()?.as_path(), path)
     } else {
         path.to_path_buf()
     };

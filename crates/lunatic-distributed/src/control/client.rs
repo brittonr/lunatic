@@ -1,14 +1,14 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use dashmap::DashMap;
-use lunatic_control::api::*;
 use lunatic_control::NodeInfo;
+use lunatic_control::api::*;
 use lunatic_process::runtimes::RawWasm;
 use reqwest::{Client as HttpClient, Url};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{atomic, atomic::AtomicU64, Arc, RwLock},
+    sync::{Arc, RwLock, atomic, atomic::AtomicU64},
     time::Duration,
 };
 
@@ -233,7 +233,8 @@ impl Client {
     }
 
     pub async fn notify_node_stopped(&self) -> Result<()> {
-        self.post::<_, ()>(&self.inner.reg.urls.node_stopped, ()).await?;
+        self.post::<_, ()>(&self.inner.reg.urls.node_stopped, ())
+            .await?;
         Ok(())
     }
 

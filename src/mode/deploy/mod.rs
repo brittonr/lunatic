@@ -6,12 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::debug;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 mod artefact;
 mod build;
 

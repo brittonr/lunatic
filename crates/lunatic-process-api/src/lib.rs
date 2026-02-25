@@ -7,19 +7,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use hash_map_id::HashMapId;
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_distributed::DistributedCtx;
 use lunatic_error_api::ErrorCtx;
 use lunatic_process::{
+    DeathReason, Process, Signal, WasmProcess,
     config::ProcessConfig,
     env::Environment,
     mailbox::MessageMailbox,
     message::Message,
-    runtimes::{wasmtime::WasmtimeCompiledModule, RawWasm},
+    runtimes::{RawWasm, wasmtime::WasmtimeCompiledModule},
     state::ProcessState,
-    DeathReason, Process, Signal, WasmProcess,
 };
 use lunatic_wasi_api::LunaticWasiCtx;
 use wasmtime::{Caller, Linker, ResourceLimiter, Val};
@@ -553,7 +553,6 @@ where
 // * If the function string is not a valid utf8 string.
 // * If the params array is in a wrong format.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn spawn<T>(
     mut caller: Caller<T>,
     (link, config_id, module_id, func_str_ptr, func_str_len, params_ptr, params_len, id_ptr): (
@@ -568,13 +567,7 @@ fn spawn<T>(
     ),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
-    T: ProcessState
-        + ProcessCtx<T>
-        + ErrorCtx
-        + LunaticWasiCtx
-        + ResourceLimiter
-        + Send
-        + 'static,
+    T: ProcessState + ProcessCtx<T> + ErrorCtx + LunaticWasiCtx + ResourceLimiter + Send + 'static,
     T::Config: ProcessConfigCtx,
 {
     Box::new(async move {
@@ -720,22 +713,21 @@ where
 // * If the function string is not a valid utf8 string.
 // * If the params array is in a wrong format.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn get_or_spawn<T, E>(
     mut caller: Caller<T>,
-    (name_str_ptr, name_str_len, link, config_id, module_id, func_str_ptr, func_str_len, params_ptr, params_len, node_id_ptr, id_ptr): (
-        u32,
-        u32,
-        i64,
-        i64,
-        i64,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-    ),
+    (
+        name_str_ptr,
+        name_str_len,
+        link,
+        config_id,
+        module_id,
+        func_str_ptr,
+        func_str_len,
+        params_ptr,
+        params_len,
+        node_id_ptr,
+        id_ptr,
+    ): (u32, u32, i64, i64, i64, u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_>
 where
     T: ProcessState
@@ -792,9 +784,9 @@ where
                 .or_trap("lunatic::process:get_or_spawn: Process spawn limit reached.")?;
 
             if !state.is_initialized() {
-                return Err(
-                    anyhow!("lunatic::process:get_or_spawn: Cannot spawn process during module initialization")
-                );
+                return Err(anyhow!(
+                    "lunatic::process:get_or_spawn: Cannot spawn process during module initialization"
+                ));
             }
 
             let config = match config_id {

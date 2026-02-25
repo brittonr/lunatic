@@ -2,18 +2,18 @@ use std::{collections::HashMap, sync::Arc};
 
 use asn1_rs::ToDer;
 use axum::{
+    Extension, Json, Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Query},
     routing::{get, post},
-    Extension, Json, Router,
 };
-use lunatic_control::{api::*, NodeInfo};
-use lunatic_distributed::{control::cert::TEST_ROOT_CERT, CertAttrs, SUBJECT_DIR_ATTRS};
+use lunatic_control::{NodeInfo, api::*};
+use lunatic_distributed::{CertAttrs, SUBJECT_DIR_ATTRS, control::cert::TEST_ROOT_CERT};
 use rcgen::{CertificateSigningRequestParams, CustomExtension};
 use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::{
-    api::{ok, ApiError, ApiResponse, HostExtractor, JsonExtractor, NodeAuth, PathExtractor},
+    api::{ApiError, ApiResponse, HostExtractor, JsonExtractor, NodeAuth, PathExtractor, ok},
     server::ControlServer,
 };
 

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use dashmap::DashMap;
 use lunatic_process::{env::Environment, state::ProcessState};
@@ -11,8 +11,8 @@ use wasmtime::ResourceLimiter;
 use x509_parser::{der_parser::oid, oid_registry::asn1_rs::Utf8String, prelude::FromDer};
 
 use crate::{
-    distributed::{self},
     CertAttrs, DistributedCtx,
+    distributed::{self},
 };
 
 #[derive(Clone)]
@@ -58,7 +58,7 @@ fn get_cert_attrs(conn: &Connection) -> Result<CertAttrs> {
     }
     let cert = peer_identity.first().unwrap();
     let (_rem, x509) = x509_parser::certificate::X509Certificate::from_der(cert.as_ref())?;
-    let oid = oid!(2.5.29 .9);
+    let oid = oid!(2.5.29.9);
     let ext = x509
         .get_extension_unique(&oid)?
         .ok_or_else(|| anyhow!("Missing critical Lunatic certificate extension."))?;

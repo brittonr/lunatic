@@ -1,6 +1,6 @@
 use std::{
     env::args_os,
-    process::{exit, Command},
+    process::{Command, exit},
 };
 
 fn main() {

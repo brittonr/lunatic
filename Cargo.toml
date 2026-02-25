@@ -144,7 +144,7 @@ reqwest = {version = "0.12", features = ["cookies", "multipart"]}
 rustls-pemfile = "2"
 serde = "1.0"
 tokio = "1"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v7"] }
 wasmtime = "41"
 wasmtime-wasi = "41"
 

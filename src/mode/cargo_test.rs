@@ -212,8 +212,7 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
     // Modes:
     // * m: ^ and $ match begin/end of line (not string)
     // * s: allow . to match \n
-    let panic_regex =
-        regex::Regex::new("(?ms)^thread '.*' panicked at '(.*)', ").unwrap();
+    let panic_regex = regex::Regex::new("(?ms)^thread '.*' panicked at '(.*)', ").unwrap();
 
     for test_function in test_functions {
         // Skip over filtered out functions
@@ -435,7 +434,12 @@ pub(crate) async fn test(augmented_args: Option<Vec<String>>) -> Result<()> {
     };
     println!(
         "\ntest result: {}. {} passed; {} failed; {} ignored; 0 measured; {} filtered out; finished in {:.2}s\n",
-        result, successes.len(), failures.len(), ignored, filtered_out, now.elapsed().as_millis() as f64 / 1000f64
+        result,
+        successes.len(),
+        failures.len(),
+        ignored,
+        filtered_out,
+        now.elapsed().as_millis() as f64 / 1000f64
     );
 
     if failures.is_empty() {

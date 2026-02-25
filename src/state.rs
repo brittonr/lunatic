@@ -21,7 +21,7 @@ use lunatic_process_api::{ProcessConfigCtx, ProcessCtx};
 use lunatic_sqlite_api::{SQLiteConnections, SQLiteCtx, SQLiteGuestAllocators, SQLiteStatements};
 use lunatic_stdout_capture::StdoutCapture;
 use lunatic_timer_api::{TimerCtx, TimerResources};
-use lunatic_wasi_api::{build_wasi, LunaticWasiCtx};
+use lunatic_wasi_api::{LunaticWasiCtx, build_wasi};
 use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{Mutex, RwLock};
@@ -556,8 +556,8 @@ mod tests {
         use std::collections::HashMap;
         use tokio::sync::RwLock;
 
-        use crate::state::DefaultProcessState;
         use crate::DefaultProcessConfig;
+        use crate::state::DefaultProcessState;
         use lunatic_process::env::Environment;
         use lunatic_process::runtimes::wasmtime::WasmtimeRuntime;
         use lunatic_process::wasm::spawn_wasm;
@@ -596,8 +596,8 @@ mod tests {
     #[tokio::test]
     async fn compile_module_on_blocking_thread_pool() {
         use crate::state::DefaultProcessState;
-        use lunatic_process::runtimes::wasmtime::WasmtimeRuntime;
         use lunatic_process::runtimes::RawWasm;
+        use lunatic_process::runtimes::wasmtime::WasmtimeRuntime;
 
         let mut wasmtime_config = wasmtime::Config::new();
         wasmtime_config.async_support(true).consume_fuel(true);

@@ -1,14 +1,14 @@
 use std::{fmt::Display, sync::Arc};
 
 use axum::{
+    Extension, Json,
     extract::{FromRequest, FromRequestParts, Path, Request},
     http::{self, request::Parts},
     response::{IntoResponse, Response},
-    Extension, Json,
 };
 use axum_extra::extract::Host;
 use http::header;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 
 use crate::server::ControlServer;
@@ -94,8 +94,8 @@ impl Display for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        use http::StatusCode as S;
         use ApiError::*;
+        use http::StatusCode as S;
 
         let body = Json(json!({
             "message": self.message(),

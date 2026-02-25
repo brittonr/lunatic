@@ -1,6 +1,6 @@
 use std::net::{SocketAddr, TcpListener};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -14,7 +14,10 @@ pub(crate) async fn start(args: Args) -> Result<()> {
         log::info!("Register URL: http://{}/", socket);
         lunatic_control_axum::server::control_server(socket).await?;
     } else if let Some(std_listener) = get_available_localhost() {
-        log::info!("Register URL: http://{}/", std_listener.local_addr().unwrap());
+        log::info!(
+            "Register URL: http://{}/",
+            std_listener.local_addr().unwrap()
+        );
         std_listener.set_nonblocking(true)?;
         let listener = tokio::net::TcpListener::from_std(std_listener)?;
         lunatic_control_axum::server::control_server_from_tcp(listener).await?;

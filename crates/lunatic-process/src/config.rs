@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 // One unit of fuel represents around 100k instructions.
 pub const UNIT_OF_COMPUTE_IN_INSTRUCTIONS: u64 = 100_000;

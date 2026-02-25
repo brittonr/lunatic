@@ -41,7 +41,14 @@ where
     let instance = runtime.instantiate(module, state).await?;
     let function = function.to_string();
     let fut = async move { instance.call(&function, params).await };
-    let child_process = crate::new(fut, id, env.clone(), signal_mailbox.1, message_mailbox, lifecycle_cb.clone());
+    let child_process = crate::new(
+        fut,
+        id,
+        env.clone(),
+        signal_mailbox.1,
+        message_mailbox,
+        lifecycle_cb.clone(),
+    );
     let child_process_handle = Arc::new(WasmProcess::new(id, signal_mailbox.0.clone()));
 
     env.add_process(id, child_process_handle.clone());

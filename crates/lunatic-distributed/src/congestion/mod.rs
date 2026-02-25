@@ -41,14 +41,14 @@
 ///
 use std::{
     collections::VecDeque,
-    sync::{atomic, Arc},
+    sync::{Arc, atomic},
 };
 
 use anyhow::Result;
 use lunatic_control::NodeInfo;
 use tokio::sync::{
-    mpsc::{self, error::TryRecvError, Receiver, Sender},
     RwLock,
+    mpsc::{self, Receiver, Sender, error::TryRecvError},
 };
 
 use crate::{

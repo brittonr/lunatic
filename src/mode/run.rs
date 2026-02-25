@@ -7,7 +7,7 @@ use lunatic_process::{
     runtimes::{self},
 };
 
-use super::common::{run_wasm, RunWasm};
+use super::common::{RunWasm, run_wasm};
 
 #[derive(Parser, Debug)]
 #[command(version)]

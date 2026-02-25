@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 // TODO: Re-export this under lunatic_runtime
 use lunatic_process::{
     env::LunaticEnvironment,
-    runtimes::wasmtime::{default_config, WasmtimeRuntime},
+    runtimes::wasmtime::{WasmtimeRuntime, default_config},
 };
-use lunatic_runtime::{state::DefaultProcessState, DefaultProcessConfig};
+use lunatic_runtime::{DefaultProcessConfig, state::DefaultProcessState};
 use tokio::sync::RwLock;
 
 fn criterion_benchmark(c: &mut Criterion) {

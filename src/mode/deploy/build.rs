@@ -1,6 +1,6 @@
 use std::process::Stdio;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use log::{debug, info};
 
 use crate::mode::deploy::artefact::get_target_dir;

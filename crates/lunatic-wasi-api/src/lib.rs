@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use anyhow::Result;
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_process::state::ProcessState;
 use lunatic_stdout_capture::StdoutCapture;
 use tokio::io::AsyncWrite;

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::{fmt::Display, future::Future, io::Write, pin::Pin};
 use wasmtime::{Caller, Memory, Val};
 

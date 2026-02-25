@@ -1,21 +1,21 @@
 use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use lunatic_process::{
+    Signal,
     env::{Environment, Environments},
     message::{DataMessage, Message},
-    runtimes::{wasmtime::WasmtimeRuntime, Modules, RawWasm},
+    runtimes::{Modules, RawWasm, wasmtime::WasmtimeRuntime},
     state::ProcessState,
-    Signal,
 };
 use rcgen::*;
 use wasmtime::ResourceLimiter;
 
 use crate::{
+    DistributedCtx, DistributedProcessState,
     distributed::message::{Request, Response},
     quic::{self, NodeEnvPermission},
-    DistributedCtx, DistributedProcessState,
 };
 
 use super::{
@@ -63,8 +63,8 @@ pub fn gen_node_cert(node_name: &str) -> Result<(String, KeyPair)> {
         .distinguished_name
         .push(DnType::OrganizationName, "Lunatic Inc.");
     params.distinguished_name.push(DnType::CommonName, "Node");
-    let key_pair = KeyPair::generate()
-        .map_err(|_| anyhow!("Error while generating node key pair."))?;
+    let key_pair =
+        KeyPair::generate().map_err(|_| anyhow!("Error while generating node key pair."))?;
     let csr = params
         .serialize_request(&key_pair)
         .map_err(|_| anyhow!("Error while generating node CSR."))?

@@ -10,16 +10,16 @@ pub mod wasm;
 
 use std::{collections::HashMap, fmt::Debug, future::Future, hash::Hash, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use env::Environment;
-use log::{debug, log_enabled, trace, warn, Level};
+use log::{Level, debug, log_enabled, trace, warn};
 
 use smallvec::SmallVec;
 use state::ProcessState;
 use tokio::{
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex,
+        mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     },
     task::JoinHandle,
 };
@@ -28,7 +28,7 @@ use crate::{mailbox::MessageMailbox, message::Message};
 
 #[cfg(feature = "metrics")]
 pub fn describe_metrics() {
-    use metrics::{describe_counter, describe_gauge, describe_histogram, Unit};
+    use metrics::{Unit, describe_counter, describe_gauge, describe_histogram};
 
     describe_counter!(
         "lunatic.process.signals.send",
@@ -499,7 +499,14 @@ where
     };
     let fut = func(process.clone(), message_mailbox.clone());
     let signal_mailbox = Arc::new(Mutex::new(signal_mailbox));
-    let join = tokio::task::spawn(new(fut, id, env.clone(), signal_mailbox, message_mailbox, None));
+    let join = tokio::task::spawn(new(
+        fut,
+        id,
+        env.clone(),
+        signal_mailbox,
+        message_mailbox,
+        None,
+    ));
     (join, process)
 }
 

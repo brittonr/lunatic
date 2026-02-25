@@ -3,16 +3,16 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Result;
 use hash_map_id::HashMapId;
 use tokio::sync::{
-    mpsc::{UnboundedReceiver, UnboundedSender},
     Mutex, RwLock,
+    mpsc::{UnboundedReceiver, UnboundedSender},
 };
 use wasmtime::Linker;
 
 use crate::{
+    Signal,
     config::ProcessConfig,
     mailbox::MessageMailbox,
     runtimes::wasmtime::{WasmtimeCompiledModule, WasmtimeRuntime},
-    Signal,
 };
 
 pub type ConfigResources<T> = HashMapId<T>;

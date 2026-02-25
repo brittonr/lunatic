@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use wasmparser::{Parser, Payload};
 
 /// Represents a type that was either parsed from the original module or newly added
@@ -258,10 +258,9 @@ impl ModuleContext {
             for ty in &self.types {
                 match ty {
                     ContextType::New(params, returns) => {
-                        type_section.ty().function(
-                            params.iter().copied(),
-                            returns.iter().copied(),
-                        );
+                        type_section
+                            .ty()
+                            .function(params.iter().copied(), returns.iter().copied());
                     }
                 }
             }
@@ -287,8 +286,7 @@ impl ModuleContext {
         }
 
         // Table (4), Memory (5), Global (6) sections
-        while section_iter.peek().is_some_and(|s| matches!(s.id, 4..=6)) {
-            let section = section_iter.next().unwrap();
+        while let Some(section) = section_iter.next_if(|s| matches!(s.id, 4..=6)) {
             module.section(&wasm_encoder::RawSection {
                 id: section.id,
                 data: &section.data,
@@ -313,8 +311,7 @@ impl ModuleContext {
         }
 
         // Start section (8)
-        while section_iter.peek().is_some_and(|s| s.id == 8) {
-            let section = section_iter.next().unwrap();
+        while let Some(section) = section_iter.next_if(|s| s.id == 8) {
             module.section(&wasm_encoder::RawSection {
                 id: section.id,
                 data: &section.data,
@@ -322,8 +319,7 @@ impl ModuleContext {
         }
 
         // Element section (9)
-        while section_iter.peek().is_some_and(|s| s.id == 9) {
-            let section = section_iter.next().unwrap();
+        while let Some(section) = section_iter.next_if(|s| s.id == 9) {
             module.section(&wasm_encoder::RawSection {
                 id: section.id,
                 data: &section.data,
@@ -333,13 +329,12 @@ impl ModuleContext {
         // DataCount section (12) - must come before code section
         // We need to peek ahead for this since it may not be next
         let mut deferred_sections = Vec::new();
-        while section_iter.peek().is_some_and(|s| !matches!(s.id, 0 | 11 | 12)) {
-            deferred_sections.push(section_iter.next().unwrap());
+        while let Some(section) = section_iter.next_if(|s| !matches!(s.id, 0 | 11 | 12)) {
+            deferred_sections.push(section);
         }
 
         // Emit DataCount if present
-        while section_iter.peek().is_some_and(|s| s.id == 12) {
-            let section = section_iter.next().unwrap();
+        while let Some(section) = section_iter.next_if(|s| s.id == 12) {
             module.section(&wasm_encoder::RawSection {
                 id: section.id,
                 data: &section.data,
@@ -362,8 +357,7 @@ impl ModuleContext {
         }
 
         // Data section (11)
-        while section_iter.peek().is_some_and(|s| s.id == 11) {
-            let section = section_iter.next().unwrap();
+        while let Some(section) = section_iter.next_if(|s| s.id == 11) {
             module.section(&wasm_encoder::RawSection {
                 id: section.id,
                 data: &section.data,

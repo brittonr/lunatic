@@ -1,11 +1,11 @@
 use std::{
-    fs::{create_dir_all, OpenOptions},
+    fs::{OpenOptions, create_dir_all},
     io::{Read, Seek, Write},
     path::Path,
 };
 
-use anyhow::{anyhow, Result};
-use toml::{value::Table, Value};
+use anyhow::{Context, Result, anyhow};
+use toml::{Value, value::Table};
 
 pub(crate) fn start() -> Result<()> {
     // Check if the current directory is a Rust cargo project.
@@ -14,45 +14,45 @@ pub(crate) fn start() -> Result<()> {
     }
 
     // Open or create cargo config file.
-    create_dir_all(".cargo").unwrap();
+    create_dir_all(".cargo").context("failed to create `.cargo/` directory")?;
     let mut config_toml = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(".cargo/config.toml")
-        .unwrap();
+        .context("failed to open `.cargo/config.toml`")?;
 
     let mut content = String::new();
-    config_toml.read_to_string(&mut content).unwrap();
+    config_toml
+        .read_to_string(&mut content)
+        .context("failed to read `.cargo/config.toml`")?;
 
-    let mut content = content.parse::<Value>().unwrap();
+    let mut content = content
+        .parse::<Value>()
+        .context("failed to parse `.cargo/config.toml` as TOML")?;
     let table = content
         .as_table_mut()
-        .expect("wrong .cargo/config.toml` format");
+        .ok_or_else(|| anyhow!("`.cargo/config.toml` root is not a TOML table"))?;
 
     // Set correct target
     match table.get_mut("build") {
         Some(value) => {
             let build = value
                 .as_table_mut()
-                .expect("wrong `.cargo/config.toml` format");
-            match build.get_mut("target") {
-                Some(target)
-                    if target.as_str().expect("wrong `.cargo/config.toml` format")
-                        != "wasm32-wasi" =>
-                {
-                    return Err(
-                        anyhow!("value `build.target` inside `.cargo/config.toml` already set to something else than `wasm32-wasi`")
-                    );
+                .ok_or_else(|| anyhow!("`build` in `.cargo/config.toml` is not a table"))?;
+            if let Some(target) = build.get_mut("target") {
+                let target_str = target.as_str().ok_or_else(|| {
+                    anyhow!("`build.target` in `.cargo/config.toml` is not a string")
+                })?;
+                if target_str != "wasm32-wasi" {
+                    return Err(anyhow!(
+                        "value `build.target` inside `.cargo/config.toml` already set to something else than `wasm32-wasi`"
+                    ));
                 }
-                None => {
-                    // If value is missing, add it.
-                    build.insert("target".to_owned(), Value::String("wasm32-wasi".to_owned()));
-                }
-                _ => {
-                    // If correct value is set don't do anything.
-                }
+            } else {
+                // If value is missing, add it.
+                build.insert("target".to_owned(), Value::String("wasm32-wasi".to_owned()));
             }
         }
         None => {
@@ -67,41 +67,39 @@ pub(crate) fn start() -> Result<()> {
         Some(value) => {
             let target = value
                 .as_table_mut()
-                .expect("wrong `.cargo/config.toml` format");
+                .ok_or_else(|| anyhow!("`target` in `.cargo/config.toml` is not a table"))?;
             match target.get_mut("wasm32-wasi") {
                 Some(value) => {
-                    let target = value
-                        .as_table_mut()
-                        .expect("wrong `.cargo/config.toml` format");
-                    match target.get_mut("runner") {
-                        Some(runner)
-                            if runner.as_str().expect("wrong `.cargo/config.toml` format")
-                                == "lunatic" =>
-                        {
-                            // Update old runner to new one
-                            target.insert(
-                                "runner".to_owned(),
-                                Value::String("lunatic run".to_owned()),
-                            );
+                    let wasm_target = value.as_table_mut().ok_or_else(|| {
+                        anyhow!("`target.wasm32-wasi` in `.cargo/config.toml` is not a table")
+                    })?;
+                    if let Some(runner) = wasm_target.get_mut("runner") {
+                        let runner_str = runner.as_str().ok_or_else(|| {
+                            anyhow!(
+                                "`target.wasm32-wasi.runner` in `.cargo/config.toml` is not a string"
+                            )
+                        })?;
+                        match runner_str {
+                            "lunatic" => {
+                                // Update old runner to new one
+                                wasm_target.insert(
+                                    "runner".to_owned(),
+                                    Value::String("lunatic run".to_owned()),
+                                );
+                            }
+                            "lunatic run" => {
+                                // Correct value is already set, don't do anything.
+                            }
+                            _ => {
+                                return Err(anyhow!(
+                                    "value `target.wasm32-wasi.runner` inside `.cargo/config.toml` already set to something else than `lunatic run`"
+                                ));
+                            }
                         }
-                        Some(runner)
-                            if runner.as_str().expect("wrong `.cargo/config.toml` format")
-                                != "lunatic run" =>
-                        {
-                            return Err(
-                            anyhow!("value `target.wasm32-wasi.runner` inside `.cargo/config.toml` already set to something else than `lunatic run`")
-                        );
-                        }
-                        None => {
-                            // If value is missing, add it.
-                            target.insert(
-                                "runner".to_owned(),
-                                Value::String("lunatic run".to_owned()),
-                            );
-                        }
-                        _ => {
-                            // If correct value is set don't do anything.
-                        }
+                    } else {
+                        // If value is missing, add it.
+                        wasm_target
+                            .insert("runner".to_owned(), Value::String("lunatic run".to_owned()));
                     }
                 }
                 None => {
@@ -124,13 +122,17 @@ pub(crate) fn start() -> Result<()> {
         }
     };
 
-    let new_config = toml::to_string(table).unwrap();
+    let new_config = toml::to_string(table).context("failed to serialize `.cargo/config.toml`")?;
     // Truncate existing config
-    config_toml.set_len(0).unwrap();
-    config_toml.rewind().unwrap();
+    config_toml
+        .set_len(0)
+        .context("failed to truncate `.cargo/config.toml`")?;
+    config_toml
+        .rewind()
+        .context("failed to rewind `.cargo/config.toml`")?;
     config_toml
         .write_all(new_config.as_bytes())
-        .expect("unable to write new config to `.cargo/config.toml`");
+        .context("failed to write `.cargo/config.toml`")?;
 
     println!("Cargo project initialized!");
 

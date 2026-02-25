@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    io::{stdout, Cursor, Read, Seek, SeekFrom, Write},
+    io::{Cursor, Read, Seek, SeekFrom, Write, stdout},
     sync::{Arc, Mutex, RwLock},
 };
 

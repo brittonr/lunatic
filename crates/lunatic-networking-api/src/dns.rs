@@ -7,7 +7,7 @@ use anyhow::Result;
 use tokio::time::timeout;
 use wasmtime::{Caller, Linker};
 
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_error_api::ErrorCtx;
 
 use crate::NetworkingCtx;

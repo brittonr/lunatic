@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use log::debug;
 use reqwest::StatusCode;
@@ -109,7 +109,9 @@ async fn new_login(provider: String, config_manager: &mut ConfigManager) -> Resu
             url::form_urlencoded::byte_serialize(login.login_id.as_bytes()).collect::<String>();
         let app_id = url::form_urlencoded::byte_serialize(config_manager.get_app_id().as_bytes())
             .collect::<String>();
-        println!("\n\nPlease visit the following URL to authenticate this cli app {provider}/cli/authenticate/{app_id}?login_id={login_id}\n\n");
+        println!(
+            "\n\nPlease visit the following URL to authenticate this cli app {provider}/cli/authenticate/{app_id}?login_id={login_id}\n\n"
+        );
 
         let status_url = format!("{provider}/api/cli/login/{}", login.login_id);
         let auth_status = check_auth_status(&status_url, &client).await;
@@ -170,7 +172,9 @@ async fn refresh_existing_login(config_manager: &mut ConfigManager) -> Result<()
         .login_id
         .clone();
     let app_id = &config_manager.global_config.cli_app_id;
-    println!("\n\nPlease visit the following URL to authenticate this cli app {root}/cli/refresh/{app_id}?login_id={login_id}\n\n");
+    println!(
+        "\n\nPlease visit the following URL to authenticate this cli app {root}/cli/refresh/{app_id}?login_id={login_id}\n\n"
+    );
 
     let client = reqwest::Client::new();
     let status_url = format!("{root}/api/cli/login/{}", login_id);

@@ -9,8 +9,8 @@ use tokio::time::timeout;
 use wasmtime::{Caller, Linker};
 
 use crate::dns::DnsIterator;
-use crate::{socket_address, NetworkingCtx};
-use lunatic_common_api::{get_memory, IntoTrap};
+use crate::{NetworkingCtx, socket_address};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_error_api::ErrorCtx;
 
 // Register UDP networking APIs to the linker
@@ -65,14 +65,7 @@ pub fn register<T: NetworkingCtx + ErrorCtx + Send + 'static>(
 // * If any memory outside the guest heap space is referenced.
 fn udp_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-    ),
+    (addr_type, addr_u8_ptr, port, flow_info, scope_id, id_u64_ptr): (u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;
@@ -232,19 +225,18 @@ fn udp_receive_from<T: NetworkingCtx + ErrorCtx + Send>(
 //
 // Traps:
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn udp_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    (udp_socket_id, addr_type, addr_u8_ptr, port, flow_info, scope_id, timeout_duration, id_u64_ptr): (
-        u64,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u64,
-        u32,
-    ),
+    (
+        udp_socket_id,
+        addr_type,
+        addr_u8_ptr,
+        port,
+        flow_info,
+        scope_id,
+        timeout_duration,
+        id_u64_ptr,
+    ): (u64, u32, u32, u32, u32, u32, u64, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         // Get the memory and the socket being connected to
@@ -391,20 +383,19 @@ fn get_udp_socket_ttl<T: NetworkingCtx>(caller: Caller<T>, udp_socket_id: u64) -
 // Traps:
 // * If the stream ID doesn't exist.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn udp_send_to<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
-    (socket_id, buffer_ptr, buffer_len, addr_type, addr_u8_ptr, port, flow_info, scope_id, opaque_ptr): (
-        u64,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-        u32,
-    ),
+    (
+        socket_id,
+        buffer_ptr,
+        buffer_len,
+        addr_type,
+        addr_u8_ptr,
+        port,
+        flow_info,
+        scope_id,
+        opaque_ptr,
+    ): (u64, u32, u32, u32, u32, u32, u32, u32, u32),
 ) -> Box<dyn Future<Output = Result<u32>> + Send + '_> {
     Box::new(async move {
         let memory = get_memory(&mut caller)?;

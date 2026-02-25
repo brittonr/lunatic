@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};

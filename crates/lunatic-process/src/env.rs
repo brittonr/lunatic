@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 
 use crate::{Process, Signal};

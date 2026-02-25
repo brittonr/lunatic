@@ -12,11 +12,11 @@ use tokio::{
 };
 use wasmtime::{Caller, Linker};
 
-use lunatic_common_api::{get_memory, IntoTrap};
+use lunatic_common_api::{IntoTrap, get_memory};
 use lunatic_error_api::ErrorCtx;
 
 use crate::dns::DnsIterator;
-use crate::{socket_address, NetworkingCtx, TlsConnection, TlsListener};
+use crate::{NetworkingCtx, TlsConnection, TlsListener, socket_address};
 use tokio_rustls::rustls::{self, pki_types::ServerName};
 use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
@@ -120,7 +120,6 @@ fn tls_local_addr<T: NetworkingCtx + ErrorCtx>(
 //
 // Traps:
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn tls_bind<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
     (
@@ -277,28 +276,31 @@ fn load_private_key(file: &[u8]) -> io::Result<rustls::pki_types::PrivateKeyDer<
     let mut reader = io::BufReader::new(file);
 
     // Load and return a single private key.
-    let keys: Vec<_> = rustls_pemfile::pkcs8_private_keys(&mut reader)
-        .collect::<Result<Vec<_>, _>>()?;
+    let keys: Vec<_> =
+        rustls_pemfile::pkcs8_private_keys(&mut reader).collect::<Result<Vec<_>, _>>()?;
     if keys.len() != 1 {
-        return Err(io::Error::other(
-            "expected a single private key",
-        ));
+        return Err(io::Error::other("expected a single private key"));
     }
 
-    Ok(rustls::pki_types::PrivateKeyDer::Pkcs8(keys.into_iter().next().unwrap()))
+    let key = keys
+        .into_iter()
+        .next()
+        .ok_or_else(|| io::Error::other("no PKCS8 private key found in PEM data"))?;
+    Ok(rustls::pki_types::PrivateKeyDer::Pkcs8(key))
 }
 
 fn load_certs(file: &[u8]) -> io::Result<rustls::pki_types::CertificateDer<'static>> {
     let mut reader = io::BufReader::new(file);
-    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
-        .collect::<Result<Vec<_>, _>>()?;
+    let certs: Vec<_> = rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()?;
     if certs.len() != 1 {
-        return Err(io::Error::other(
-            "expected a single private key",
-        ));
+        return Err(io::Error::other("expected a single private key"));
     }
 
-    Ok(certs.into_iter().next().unwrap())
+    let cert = certs
+        .into_iter()
+        .next()
+        .ok_or_else(|| io::Error::other("no certificate found in PEM data"))?;
+    Ok(cert)
 }
 
 // If timeout is specified (value different from `u64::MAX`), the function will return on timeout
@@ -313,7 +315,6 @@ fn load_certs(file: &[u8]) -> io::Result<rustls::pki_types::CertificateDer<'stat
 // Traps:
 // * If **addr_type** is neither 4 or 6.
 // * If any memory outside the guest heap space is referenced.
-#[allow(clippy::too_many_arguments)]
 fn tls_connect<T: NetworkingCtx + ErrorCtx + Send>(
     mut caller: Caller<T>,
     (

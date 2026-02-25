@@ -1,22 +1,22 @@
 use std::{
     sync::{
-        atomic::{self, AtomicU64, AtomicUsize},
         Arc,
+        atomic::{self, AtomicU64, AtomicUsize},
     },
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_cell::sync::AsyncCell;
 use bytes::Bytes;
 use dashmap::DashMap;
 use tokio::sync::{
-    mpsc::{Receiver, Sender},
     Notify, RwLock,
+    mpsc::{Receiver, Sender},
 };
 
 use crate::{
-    congestion::{self, node_connection_manager, MessageChunk, NodeConnectionManager},
+    congestion::{self, MessageChunk, NodeConnectionManager, node_connection_manager},
     control,
     distributed::message::{Request, ResponseContent, Spawn},
     quic,

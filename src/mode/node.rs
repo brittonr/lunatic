@@ -8,7 +8,7 @@ use clap::Parser;
 
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use lunatic_distributed::{
     control::{self},
     distributed::{self, server::ServerCtx},
@@ -21,7 +21,7 @@ use lunatic_process::{
 use lunatic_runtime::DefaultProcessState;
 use uuid::Uuid;
 
-use crate::mode::common::{run_wasm, RunWasm};
+use crate::mode::common::{RunWasm, run_wasm};
 
 #[derive(Parser, Debug)]
 pub(crate) struct Args {
@@ -64,7 +64,7 @@ pub(crate) async fn start(args: Args) -> Result<()> {
         .ok_or_else(|| anyhow!("No available localhost UDP port"))?;
     let http_client = reqwest::Client::new();
 
-    let node_name = Uuid::new_v4();
+    let node_name = Uuid::now_v7();
     let node_name_str = node_name.as_hyphenated().to_string();
     let node_attributes: HashMap<String, String> = args.tag.clone().into_iter().collect();
     let (csr_pem, node_key_pair) =

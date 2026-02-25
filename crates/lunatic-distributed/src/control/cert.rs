@@ -39,8 +39,7 @@ pub fn root_cert(ca_cert: &str, ca_keys: &str) -> Result<(Certificate, KeyPair)>
     let ca_cert_pem = std::fs::read(Path::new(ca_cert))?;
     let ca_keys_pem = std::fs::read(Path::new(ca_keys))?;
     let key_pair = KeyPair::from_pem(std::str::from_utf8(&ca_keys_pem)?)?;
-    let root_params =
-        CertificateParams::from_ca_cert_pem(std::str::from_utf8(&ca_cert_pem)?)?;
+    let root_params = CertificateParams::from_ca_cert_pem(std::str::from_utf8(&ca_cert_pem)?)?;
     let root_cert = root_params.self_signed(&key_pair)?;
     Ok((root_cert, key_pair))
 }
