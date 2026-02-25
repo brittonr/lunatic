@@ -33,6 +33,9 @@
             "rust-analyzer"
             "clippy"
           ];
+          targets = [
+            "wasm32-wasip1"
+          ];
         };
 
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
